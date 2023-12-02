@@ -19,11 +19,16 @@ public:
     void printAll(QString info, QTextStream &in);
     QString bytesToMebibytesString(unsigned long bytes);
     void updateProcesses();
+//    void updateCPUResourceInfo();
     QString kbToMiB(const QString &memLine);
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+private slots:
+    void updateCPUResourceInfo(); // Declaration for the CPU info update function
+
 private:
     Ui::MainWindow *ui;
+    QTimer *cpuInfoTimer; // QTimer object to trigger updates
 };
 #endif // MAINWINDOW_H
