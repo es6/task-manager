@@ -138,7 +138,12 @@ p, li { white-space: pre-wrap; }
       </item>
       <item>
        <property name="text">
-        <string>Tree Format?</string>
+        <string>Tree View - All</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>Tree View - Current User</string>
        </property>
       </item>
      </widget>
