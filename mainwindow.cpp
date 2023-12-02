@@ -7,6 +7,9 @@
 #include <filesystem>
 #include <QStorageInfo>
 #include <QDir>
+#include <QCoreApplication>
+#include <QStringList>
+#include <sys/statvfs.h>
 #define GB (1024 * 1024 * 1024)
 
 
@@ -18,12 +21,89 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     updateSystemInfo();
     updateProcesses();
+    updateFileSystemInfo();
 }
 
 MainWindow::~MainWindow()
 {
     delete ui;
 }
+
+QString MainWindow::bytesToMebibytesString(unsigned long bytes) {
+    const double mebibyte = 1024 * 1024; // 1 Mebibyte = 1024 * 1024 bytes
+    double mebibytes = bytes / mebibyte;
+
+    if(mebibytes > 1000) {
+        double gibibytes = mebibytes / 1024;
+        QString result = QString::number(gibibytes, 'f', 1); // 'f' specifies fixed-point notation, 2 specifies 2 decimal places
+        result.append(" GiB");
+        return result;
+    } else {
+        QString result = QString::number(mebibytes, 'f', 1); // 'f' specifies fixed-point notation, 2 specifies 2 decimal places
+        result.append(" MiB");
+        return result;
+    }
+}
+
+void MainWindow::updateFileSystemInfo() {
+//    qDebug() << "IN FILE";
+    QFile file("/proc/mounts");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qDebug() << "Failed to open /proc/mounts";
+        return;
+    }
+
+//    qDebug() << "IN FILE";
+    QTextStream in;
+    in.setDevice(&file);
+    QString line = in.readLine();
+    while (line != nullptr) {
+        QStringList parts = line.split(' ');
+
+        QString mountPoint = parts[1];
+        QString device = parts[0];
+        QString type = parts[2];
+
+        // Get filesystem statistics using statvfs
+        struct statvfs buffer;
+        if (statvfs(mountPoint.toStdString().c_str(), &buffer) == 0 &&
+                (device.startsWith("/dev"))) {
+            unsigned long totalSpace = buffer.f_blocks * buffer.f_frsize;
+            unsigned long freeSpace = buffer.f_bfree * buffer.f_frsize;
+            unsigned long availableSpace = buffer.f_bavail * buffer.f_frsize;
+            unsigned long usedSpace = totalSpace - freeSpace;
+
+            // Convert sizes to Mebibytes (MiB) or Gibibyte (Gib) and represent as QStrings
+            QString totalSpaceMiB = bytesToMebibytesString(totalSpace);
+            QString freeSpaceMiB = bytesToMebibytesString(freeSpace);
+            QString availableSpaceMiB = bytesToMebibytesString(availableSpace);
+            QString usedSpaceMiB = bytesToMebibytesString(usedSpace);
+
+            QTreeWidgetItem *topItem = new QTreeWidgetItem();
+            topItem->setText(0, device);
+            topItem->setText(1, mountPoint);
+            topItem->setText(2, type);
+            topItem->setText(3, totalSpaceMiB);
+            topItem->setText(4, freeSpaceMiB);
+            topItem->setText(5, availableSpaceMiB);
+            topItem->setText(6, usedSpaceMiB);
+            ui->treeWidgetFileSystem->addTopLevelItem(topItem);
+//            qDebug() << "Mount Point:" << mountPoint
+//                     << "Device:" << device
+//                     << "Type:" << type
+//                     << "Total:" << totalSpace
+//                     << "Free:" << freeSpace
+//                     << "Available:" << availableSpace
+//                     << "Used:" << usedSpace;
+        }
+        line = in.readLine();
+    }
+
+    file.close();
+}
+
+
+
 
 void MainWindow::updateProcesses() {
     QDir procDir("/proc");
@@ -47,7 +127,7 @@ void MainWindow::updateProcesses() {
                 QString processMemory;
                 QString qPid;
                 while (line != nullptr) {
-                    qDebug() << "line lol" << line;
+//                    qDebug() << "line lol" << line;
                     if (line.startsWith("Name:")) {
                         processName = line.split("\t").last();
                     } else if (line.startsWith("State:")) {
@@ -136,7 +216,7 @@ void MainWindow::updateSystemInfo() {
         QString memInfo = QString("Memory: %1 GB").arg(memGb, 0, 'f', 1);
 
         ui->listWidget->addItem(memInfo);
-        qDebug() << memInfo;
+//        qDebug() << memInfo;
         file.close();
     }
 

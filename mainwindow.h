@@ -15,7 +15,9 @@ class MainWindow : public QMainWindow
 public:
     double hardDiskCheck(const QString &disk);
     void updateSystemInfo();
+    void updateFileSystemInfo();
     void printAll(QString info, QTextStream &in);
+    QString bytesToMebibytesString(unsigned long bytes);
     void updateProcesses();
     QString kbToMiB(const QString &memLine);
     MainWindow(QWidget *parent = nullptr);
