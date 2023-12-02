@@ -25,6 +25,12 @@ void MainWindow::updateSystemInfo() {
     QString info;
     QString line;
 
+//    ui->tabWidget->setTabText(0, "System");
+//    ui->tabWidget->setTabText(1, "Processes");
+//    ui->tabWidget->setTabText(2, "Resources");
+//    ui->tabWidget->setTabText(3, "File Systems");
+
+
     file.setFileName("/proc/sys/kernel/osrelease");
     if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         in.setDevice(&file);
