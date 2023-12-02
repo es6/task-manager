@@ -24,6 +24,8 @@ MainWindow::MainWindow(QWidget *parent)
     updateProcesses(false);
     updateFileSystemInfo();
     connect(ui->comboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(onProcessFilterChanged(int)));
+    connect(ui->pushButton, SIGNAL(clicked()), this, SLOT(pushButton_clicked()));
+
 }
 
 MainWindow::~MainWindow()
@@ -130,7 +132,6 @@ void MainWindow::updateProcesses(bool showOnlyUserProcess) {
             statusFile.setFileName(statusPath);
             QString processUid = getProcessUid(statusPath);
             if (showOnlyUserProcess && (processUid.toInt() != currentUid)) {
-                qDebug() << "if here lolol";
                 continue;
             }
             if (statusFile.open(QIODevice::ReadOnly)) {
@@ -204,6 +205,14 @@ QString MainWindow::kbToMiB(const QString &memLine) {
         return QString("%1 MiB").arg(memMiB, 0, 'f', 1);
     }
     return QString();
+}
+
+void MainWindow::pushButton_clicked() {
+    // Check the current index of the comboBox
+    bool showOnlyUserProcesses = (ui->comboBox->currentIndex() == 1);
+
+    // Refresh the process list based on the current comboBox selection
+    updateProcesses(showOnlyUserProcesses);
 }
 
 /*

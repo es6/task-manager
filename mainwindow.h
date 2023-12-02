@@ -26,6 +26,7 @@ public:
 
 private slots:
     void onProcessFilterChanged(int index);
+    void pushButton_clicked();
 
 private:
     Ui::MainWindow *ui;
