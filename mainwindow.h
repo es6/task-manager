@@ -18,10 +18,14 @@ public:
     void updateFileSystemInfo();
     void printAll(QString info, QTextStream &in);
     QString bytesToMebibytesString(unsigned long bytes);
-    void updateProcesses();
+    void updateProcesses(bool showOnlyUserProcess);
     QString kbToMiB(const QString &memLine);
+    QString getProcessUid(const QString &statusPath);
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+
+private slots:
+    void onProcessFilterChanged(int index);
 
 private:
     Ui::MainWindow *ui;
