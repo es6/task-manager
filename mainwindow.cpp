@@ -11,6 +11,7 @@
 #include <QCoreApplication>
 #include <QStringList>
 #include <sys/statvfs.h>
+#include <unistd.h>
 #define GB (1024 * 1024 * 1024)
 
 
@@ -21,7 +22,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
     updateSystemInfo();
-    updateProcesses();
+    updateProcesses(false);
     updateFileSystemInfo();
     updateCPUResourceInfo();
     // Create a QTimer object
@@ -35,6 +36,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Start the timer
     cpuInfoTimer->start();
+    connect(ui->comboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(onProcessFilterChanged(int)));
+    connect(ui->pushButton, SIGNAL(clicked()), this, SLOT(pushButton_clicked()));
+
 }
 
 MainWindow::~MainWindow()
@@ -93,14 +97,14 @@ QString MainWindow::bytesToMebibytesString(unsigned long bytes) {
 }
 
 void MainWindow::updateFileSystemInfo() {
-//    qDebug() << "IN FILE";
+    //    qDebug() << "IN FILE";
     QFile file("/proc/mounts");
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qDebug() << "Failed to open /proc/mounts";
         return;
     }
 
-//    qDebug() << "IN FILE";
+    //    qDebug() << "IN FILE";
     QTextStream in;
     in.setDevice(&file);
     QString line = in.readLine();
@@ -135,28 +139,35 @@ void MainWindow::updateFileSystemInfo() {
             topItem->setText(5, availableSpaceMiB);
             topItem->setText(6, usedSpaceMiB);
             ui->treeWidgetFileSystem->addTopLevelItem(topItem);
-//            qDebug() << "Mount Point:" << mountPoint
-//                     << "Device:" << device
-//                     << "Type:" << type
-//                     << "Total:" << totalSpace
-//                     << "Free:" << freeSpace
-//                     << "Available:" << availableSpace
-//                     << "Used:" << usedSpace;
+            //            qDebug() << "Mount Point:" << mountPoint
+            //                     << "Device:" << device
+            //                     << "Type:" << type
+            //                     << "Total:" << totalSpace
+            //                     << "Free:" << freeSpace
+            //                     << "Available:" << availableSpace
+            //                     << "Used:" << usedSpace;
         }
         line = in.readLine();
     }
     file.close();
 }
 
+void MainWindow::onProcessFilterChanged(int index) {
+    if (index == 1) { // Assuming "My Processes" is the second item
+        updateProcesses(true);
+    } else {
+        updateProcesses(false);
+    }
+}
 
 
-
-void MainWindow::updateProcesses() {
+void MainWindow::updateProcesses(bool showOnlyUserProcess) {
     QDir procDir("/proc");
     QStringList pidList = procDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
     ui->treeWidget->clear();
 
     QFile statusFile;
+    uid_t currentUid = getuid();
 
     foreach (const QString &pidDir, pidList) {
         bool ok;
@@ -165,6 +176,10 @@ void MainWindow::updateProcesses() {
             // Read process information from /proc/[pid] files
             QString statusPath = "/proc/" + pidDir + "/status";
             statusFile.setFileName(statusPath);
+            QString processUid = getProcessUid(statusPath);
+            if (showOnlyUserProcess && (processUid.toInt() != currentUid)) {
+                continue;
+            }
             if (statusFile.open(QIODevice::ReadOnly)) {
                 QTextStream in(&statusFile);
                 QString line = in.readLine();
@@ -173,7 +188,7 @@ void MainWindow::updateProcesses() {
                 QString processMemory;
                 QString qPid;
                 while (line != nullptr) {
-//                    qDebug() << "line lol" << line;
+                    //                    qDebug() << "line lol" << line;
                     if (line.startsWith("Name:")) {
                         processName = line.split("\t").last();
                     } else if (line.startsWith("State:")) {
@@ -192,16 +207,34 @@ void MainWindow::updateProcesses() {
                 }
                 statusFile.close();
 
-                // Add process information to tree widget
-                QTreeWidgetItem *item = new QTreeWidgetItem(ui->treeWidget);
-                item->setText(0, processName);
-                item->setText(1, processStatus);
-                item->setText(2, QString::number(0)); // Placeholder for CPU usage
-                item->setText(3, pidDir);
-                item->setText(4, processMemory);
+                if (processMemory != "") {
+                    // Add process information to tree widget
+                    QTreeWidgetItem *item = new QTreeWidgetItem(ui->treeWidget);
+                    item->setText(0, processName);
+                    item->setText(1, processStatus);
+                    item->setText(2, QString::number(0)); // Placeholder for CPU usage
+                    item->setText(3, pidDir);
+                    item->setText(4, processMemory);
+                }
             }
         }
     }
+}
+
+QString MainWindow::getProcessUid(const QString &statusPath) {
+    QFile file(statusPath);
+    if (file.open(QIODevice::ReadOnly)) {
+        QTextStream in(&file);
+        QString line = in.readLine();
+        while (line != nullptr) {
+            if (line.startsWith("Uid:")) {
+                return line.split("\t").at(1); // Uid is the second field
+            }
+            line = in.readLine();
+        }
+        file.close();
+    }
+    return QString();
 }
 
 QString MainWindow::kbToMiB(const QString &memLine) {
@@ -218,6 +251,14 @@ QString MainWindow::kbToMiB(const QString &memLine) {
         return QString("%1 MiB").arg(memMiB, 0, 'f', 1);
     }
     return QString();
+}
+
+void MainWindow::pushButton_clicked() {
+    // Check the current index of the comboBox
+    bool showOnlyUserProcesses = (ui->comboBox->currentIndex() == 1);
+
+    // Refresh the process list based on the current comboBox selection
+    updateProcesses(showOnlyUserProcesses);
 }
 
 /*
@@ -262,7 +303,7 @@ void MainWindow::updateSystemInfo() {
         QString memInfo = QString("Memory: %1 GB").arg(memGb, 0, 'f', 1);
 
         ui->listWidget->addItem(memInfo);
-//        qDebug() << memInfo;
+        //        qDebug() << memInfo;
         file.close();
     }
 
