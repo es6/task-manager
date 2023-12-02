@@ -30,12 +30,6 @@ void MainWindow::updateSystemInfo() {
     QString info;
     QString line;
 
-//    ui->tabWidget->setTabText(0, "System");
-//    ui->tabWidget->setTabText(1, "Processes");
-//    ui->tabWidget->setTabText(2, "Resources");
-//    ui->tabWidget->setTabText(3, "File Systems");
-
-
     file.setFileName("/proc/sys/kernel/osrelease");
     if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         in.setDevice(&file);
@@ -93,9 +87,9 @@ void MainWindow::updateSystemInfo() {
     }
 
     // Display disk space here with hardDiskCheck
-    double diskSpace = hardDiskCheck("/");
+    double diskSpace = hardDiskCheck("/homes/lin1413");
     if (diskSpace != -1) {
-        QString diskSpaceInfo = QString("Disk Space Free: %1 GB").arg(diskSpace, 0, 'f', 1);
+        QString diskSpaceInfo = QString("Available disk space: %1 GB").arg(diskSpace, 0, 'f', 1);
         ui->listWidget->addItem(diskSpaceInfo);
         qDebug() << diskSpaceInfo;
     }
