@@ -4,6 +4,11 @@
 #include <QTextStream>
 #include <QDebug>
 #include <QRegExp>
+#include <filesystem>
+#include <QStorageInfo>
+#define GB (1024 * 1024 * 1024)
+
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -81,12 +86,12 @@ void MainWindow::updateSystemInfo() {
         file.close();
     }
 
-    file.setFileName("/proc/diskstats");
-    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        //        in.setDevice(&file);
-        //        info = "Disk Stats: ";
-        //        printAll(info, in);
-        file.close();
+    // Display disk space here with hardDiskCheck
+    double diskSpace = hardDiskCheck("/");
+    if (diskSpace != -1) {
+        QString diskSpaceInfo = QString("Disk Space Free: %1 GB").arg(diskSpace, 0, 'f', 1);
+        ui->listWidget->addItem(diskSpaceInfo);
+        qDebug() << diskSpaceInfo;
     }
 }
 
@@ -96,4 +101,14 @@ void MainWindow::printAll(QString info, QTextStream &in) {
         ui->listWidget->addItem(info + line);
         line = in.readLine();
     }
+}
+
+double MainWindow::hardDiskCheck(const QString &disk)
+{
+    QStorageInfo storage(disk);
+    if(storage.isValid() && storage.isReady())
+    {
+        return storage.bytesAvailable() * 1.0 / GB;
+    }
+    return -1;
 }

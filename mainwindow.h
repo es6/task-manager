@@ -13,6 +13,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
+    double hardDiskCheck(const QString &disk);
     void updateSystemInfo();
     void printAll(QString info, QTextStream &in);
     MainWindow(QWidget *parent = nullptr);
