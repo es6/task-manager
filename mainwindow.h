@@ -16,6 +16,8 @@ public:
     double hardDiskCheck(const QString &disk);
     void updateSystemInfo();
     void printAll(QString info, QTextStream &in);
+    void updateProcesses();
+    QString kbToMiB(const QString &memLine);
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
