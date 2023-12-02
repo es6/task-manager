@@ -39,10 +39,12 @@ public:
     ~MainWindow();
 
 private slots:
+    void updateCPUResourceInfo(); // Declaration for the CPU info update function
     void onProcessFilterChanged(int index);
     void pushButton_clicked();
 
 private:
     Ui::MainWindow *ui;
+    QTimer *cpuInfoTimer; // QTimer object to trigger updates
 };
 #endif // MAINWINDOW_H

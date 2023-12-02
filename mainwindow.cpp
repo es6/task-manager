@@ -6,6 +6,7 @@
 #include <QRegExp>
 #include <filesystem>
 #include <QStorageInfo>
+#include <QTimer>
 #include <QDir>
 #include <QCoreApplication>
 #include <QStringList>
@@ -23,7 +24,18 @@ MainWindow::MainWindow(QWidget *parent)
     updateSystemInfo();
     updateProcesses(false, false);
     updateFileSystemInfo();
+    updateCPUResourceInfo();
+    // Create a QTimer object
+    cpuInfoTimer = new QTimer(this);
 
+    // Set the interval to 1000 milliseconds (1 second)
+    cpuInfoTimer->setInterval(1000);
+
+    // Connect the timer's timeout signal to the updateCPUResourceInfo slot
+    connect(cpuInfoTimer, &QTimer::timeout, this, &MainWindow::updateCPUResourceInfo);
+
+    // Start the timer
+    cpuInfoTimer->start();
     connect(ui->comboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(onProcessFilterChanged(int)));
     connect(ui->pushButton, SIGNAL(clicked()), this, SLOT(pushButton_clicked()));
 
@@ -46,7 +58,41 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
-    delete ui;
+//    delete ui;
+}
+
+
+void MainWindow::updateCPUResourceInfo() {
+    QFile file("/proc/stat");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qDebug() << "Failed to open /proc/stat";
+        return;
+    }
+
+    QTextStream in;
+    in.setDevice(&file);
+    bool endCPU = false;
+    QString line = in.readLine();
+    while (line != nullptr && !endCPU) {
+        if(!line.startsWith("cpu")) {
+            endCPU = true;
+        } else {
+            QStringList data = line.trimmed().split(" ");
+            if(data.size() > 8) {
+                int totalNonIdle = data[1].toInt() + data[2].toInt() + data[3].toInt() +
+                        data[6].toInt() + data[7].toInt() + data[8].toInt() + data[9].toInt() +
+                        data[10].toInt();
+                int totalIdle = data[4].toInt() + data[5].toInt();
+                int totalCPU = totalIdle + totalNonIdle;
+                double cpuUsage = ((double)totalNonIdle)/ ((double)totalCPU) * 100;
+                QString result = QString::number(cpuUsage, 'f', 1);
+                result.append("%");
+                qDebug() << data[0] + ": "
+                         << result;
+            }
+            line = in.readLine();
+        }
+    }
 }
 
 QString MainWindow::bytesToMebibytesString(unsigned long bytes) {
@@ -55,11 +101,11 @@ QString MainWindow::bytesToMebibytesString(unsigned long bytes) {
 
     if(mebibytes > 1000) {
         double gibibytes = mebibytes / 1024;
-        QString result = QString::number(gibibytes, 'f', 1); // 'f' specifies fixed-point notation, 2 specifies 2 decimal places
+        QString result = QString::number(gibibytes, 'f', 1);
         result.append(" GiB");
         return result;
     } else {
-        QString result = QString::number(mebibytes, 'f', 1); // 'f' specifies fixed-point notation, 2 specifies 2 decimal places
+        QString result = QString::number(mebibytes, 'f', 1);
         result.append(" MiB");
         return result;
     }
@@ -118,7 +164,6 @@ void MainWindow::updateFileSystemInfo() {
         }
         line = in.readLine();
     }
-
     file.close();
 }
 
