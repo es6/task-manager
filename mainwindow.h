@@ -8,6 +8,17 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
+struct ProcessInfo {
+    int pid;
+    int ppid;
+    int uid;
+    QString name;
+    QString status;
+    QString memory;
+    // Other fields as needed
+};
+
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -18,9 +29,12 @@ public:
     void updateFileSystemInfo();
     void printAll(QString info, QTextStream &in);
     QString bytesToMebibytesString(unsigned long bytes);
-    void updateProcesses(bool showOnlyUserProcess);
+    void updateProcesses(bool showOnlyUserProcess, bool treeView);
     QString kbToMiB(const QString &memLine);
     QString getProcessUid(const QString &statusPath);
+    QMap<int, ProcessInfo> readAllProcesses(bool showOnlyUserProcess);
+    ProcessInfo readProcessInfo(const QString &statusPath);
+    void buildProcessTree(const QMap<int, ProcessInfo> &processes);
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
