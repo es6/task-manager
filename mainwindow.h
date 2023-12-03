@@ -3,6 +3,8 @@
 
 #include <QMainWindow>
 #include <QTextStream>
+#include <QtCharts>
+
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -19,6 +21,10 @@ public:
     void printAll(QString info, QTextStream &in);
     QString bytesToMebibytesString(unsigned long bytes);
     void updateProcesses();
+    void createBarChart();
+    void updateBarChart();
+    std::vector<QLineSeries*> lineSeriesVector; // Vector of QLineSeries pointers
+    QChartView *chartView;
 //    void updateCPUResourceInfo();
     QString kbToMiB(const QString &memLine);
     MainWindow(QWidget *parent = nullptr);

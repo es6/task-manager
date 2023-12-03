@@ -4,6 +4,8 @@
 #include <QTextStream>
 #include <QDebug>
 #include <QRegExp>
+#include <QtCharts>
+#include <QMainWindow>
 #include <filesystem>
 #include <QStorageInfo>
 #include <QTimer>
@@ -12,13 +14,13 @@
 #include <QStringList>
 #include <sys/statvfs.h>
 #define GB (1024 * 1024 * 1024)
-
-
-
+std::vector<QLineSeries*> lineSeriesVector;
+QChartView *chartView;
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
+
     ui->setupUi(this);
     updateSystemInfo();
     updateProcesses();
@@ -39,7 +41,91 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
-//    delete ui;
+    for (QLineSeries* series : lineSeriesVector) {
+            delete series; // Release memory for each QLineSeries
+    }
+    delete ui;
+}
+
+
+void MainWindow::createBarChart() {
+    QChart *lineChart = new QChart();
+
+
+    lineChart->setTitle("CPU stats");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 100);
+    axisY->setLabelFormat("%.0f%%");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 4));
+
+    for (int i = 0; (i < (int)lineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(lineSeriesVector[i]);
+        lineSeriesVector[i]->attachAxis(axisY);
+//        lineChart->addSeries(lineSeriesVector[i]);
+    }
+
+
+    chartView = new QChartView(lineChart);
+
+    chartView->setRenderHint(QPainter::Antialiasing);
+
+//    // Create a frame to contain the chart
+//    QFrame *frame = new QFrame(ui->tab_3);
+//    QVBoxLayout *frameLayout = new QVBoxLayout(frame);
+//    frameLayout->addWidget(chartView);
+
+
+
+//    // Set the frame as the central widget of tab_3
+//    ui->tab_3->setLayout(frameLayout);
+    ui->tab_3->layout()->addWidget(chartView);
+
+}
+
+void MainWindow::updateBarChart() {
+    QChart *lineChart = new QChart();
+
+    lineChart->setTitle("CPU stats");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 100);
+    axisY->setLabelFormat("%.0f%%");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 4));
+
+    for (int i = 0; (i < (int)lineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(lineSeriesVector[i]);
+        lineSeriesVector[i]->attachAxis(axisY);
+    }
+        chartView->setChart(lineChart);
 }
 
 
@@ -54,25 +140,100 @@ void MainWindow::updateCPUResourceInfo() {
     in.setDevice(&file);
     bool endCPU = false;
     QString line = in.readLine();
-    while (line != nullptr && !endCPU) {
-        if(!line.startsWith("cpu")) {
-            endCPU = true;
-        } else {
-            QStringList data = line.trimmed().split(" ");
-            if(data.size() > 8) {
-                int totalNonIdle = data[1].toInt() + data[2].toInt() + data[3].toInt() +
-                        data[6].toInt() + data[7].toInt() + data[8].toInt() + data[9].toInt() +
-                        data[10].toInt();
-                int totalIdle = data[4].toInt() + data[5].toInt();
-                int totalCPU = totalIdle + totalNonIdle;
-                double cpuUsage = ((double)totalNonIdle)/ ((double)totalCPU) * 100;
-                QString result = QString::number(cpuUsage, 'f', 1);
-                result.append("%");
-                qDebug() << data[0] + ": "
-                         << result;
+
+    //Case where vector has not been initially populated
+    if(lineSeriesVector.size() == 0) {
+        // Create a frame to contain the chart
+        QFrame *frame = new QFrame(ui->tab_3);
+        QVBoxLayout *frameLayout = new QVBoxLayout(frame);
+    //    frameLayout->addWidget(chartView);
+
+
+
+        // Set the frame as the central widget of tab_3
+        ui->tab_3->setLayout(frameLayout);
+        //Creates the new line series and populates it with zero values
+        while (line != nullptr && !endCPU) {
+
+            if(!line.startsWith("cpu")) {
+                endCPU = true;
+            } else {
+
+                QLineSeries *lineSeries = new QLineSeries();
+
+                for(int i = 60; i > 0 ; i--) {
+                    lineSeries->append(i,0);
+                }
+                QStringList data = line.trimmed().split(" ");
+                if(data.size() > 8) {
+                    int totalNonIdle = data[1].toInt() + data[2].toInt() + data[3].toInt() +
+                            data[6].toInt() + data[7].toInt() + data[8].toInt() + data[9].toInt() +
+                            data[10].toInt();
+                    int totalIdle = data[4].toInt() + data[5].toInt();
+                    int totalCPU = totalIdle + totalNonIdle;
+                    double cpuUsage = ((double)totalNonIdle)/ ((double)totalCPU) * 100;
+                    QString result = QString::number(cpuUsage, 'f', 1);
+                    result.append("%");
+
+                    QPointF point = lineSeries->at(0);
+                    point.setY(cpuUsage);
+                    lineSeries->replace(0, point);
+
+                    //THIS CODE IS INTENDED TO MAKE THE LEGEND DIFFERENT LINES
+                    //CURRENTLY DOES NOT WORK
+                    if(lineSeriesVector.size() != 0 && lineSeriesVector.size() % 4 == 0){
+                        QString dataSet = data[0] + "\n";
+                        lineSeries->setName(dataSet);
+                    } else {
+                        lineSeries->setName(data[0]);
+                    }
+
+
+
+                    lineSeriesVector.push_back(lineSeries);
+                    qDebug() << "ADDED LINE SERIES";
+//                    qDebug() << data[0] + ": "
+//                             << result;
+                }
+
+                line = in.readLine();
             }
-            line = in.readLine();
         }
+        createBarChart();
+        //WORKING ON ELSE
+    } else {
+        int index = 0;
+        while (line != nullptr && !endCPU) {
+            if(!line.startsWith("cpu")) {
+                endCPU = true;
+            } else {
+//                QPointF point = lineSeriesVector[index]->at(40);
+//                point.setY(40);
+//                lineSeriesVector[index]->replace(40, point);
+                for(int i = 60; i > 0; i--){
+                    QPointF point = lineSeriesVector[index]->at(i);
+                    point.setY(lineSeriesVector[index]->at(i - 1).y());
+                    lineSeriesVector[index]->replace(i, point);
+                }
+
+                QStringList data = line.trimmed().split(" ");
+                if(data.size() > 8) {
+                    int totalNonIdle = data[1].toInt() + data[2].toInt() + data[3].toInt() +
+                            data[6].toInt() + data[7].toInt() + data[8].toInt() + data[9].toInt() +
+                            data[10].toInt();
+                    int totalIdle = data[4].toInt() + data[5].toInt();
+                    int totalCPU = totalIdle + totalNonIdle;
+                    double cpuUsage = ((double)totalNonIdle)/ ((double)totalCPU) * 100;
+                    QString result = QString::number(cpuUsage, 'f', 1);
+                    result.append("%");
+                    qDebug() << data[0] + ": "
+                             << result;
+                    index++;
+                }
+                line = in.readLine();
+            }
+        }
+        updateBarChart();
     }
 }
 
