@@ -17,10 +17,14 @@
 
 std::vector<QLineSeries*> cpuLineSeriesVector;
 std::vector<QLineSeries*> ramSwapLineSeriesVector;
+std::vector<QLineSeries*> networkLineSeriesVector;
 std::vector<int> cpuLastIdle;
 std::vector<int> cpuLastUsed;
+int recievedLast;
+int uploadLast;
 QChartView *cpuChartView;
 QChartView *ramSwapChartView;
+QChartView *networkChartView;
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -34,6 +38,7 @@ MainWindow::MainWindow(QWidget *parent)
     updateFileSystemInfo();
     updateCPUResourceInfo();
     updateRamSwapResourceInfo();
+    updateNetworkResourceInfo();
     // Create a QTimer object
     graphInfoTimer = new QTimer(this);
 
@@ -60,7 +65,164 @@ MainWindow::~MainWindow() {
 void MainWindow::updateGraphs(){
     updateCPUResourceInfo();
     updateRamSwapResourceInfo();
+    updateNetworkResourceInfo();
 }
+void MainWindow::createNetworkBarChart() {
+    QChart *lineChart = new QChart();
+
+
+    lineChart->setTitle("Network History");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 20);
+    axisY->setLabelFormat("%.0f KiB/s");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 6));
+
+    for (int i = 0; (i < (int)networkLineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(networkLineSeriesVector[i]);
+        networkLineSeriesVector[i]->attachAxis(axisY);
+    }
+
+
+    networkChartView = new QChartView(lineChart);
+
+    networkChartView->setRenderHint(QPainter::Antialiasing);
+    ui->tab_3->layout()->addWidget(networkChartView);
+}
+void MainWindow::updateNetworkBarChart() {
+    QChart *lineChart = new QChart();
+
+    lineChart->setTitle("Network History");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 20);
+    axisY->setLabelFormat("%.0f KiB/s");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 6));
+
+    for (int i = 0; (i < (int)networkLineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(networkLineSeriesVector[i]);
+        networkLineSeriesVector[i]->attachAxis(axisY);
+    }
+    networkChartView->setChart(lineChart);
+}
+
+void MainWindow::updateNetworkResourceInfo() {
+    QTextStream in;
+    QString info;
+    QString line;
+    long recieveTotal = 0;
+    long uploadTotal = 0;
+    QFile file("/proc/net/dev");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qDebug() << "Failed to open /proc/meminfo";
+        return;
+    }
+
+    in.setDevice(&file);
+    line = in.readLine();
+    //Does Recieve then transmit
+    while(line != nullptr) {
+        if (!line.startsWith("Inter-|") && !line.startsWith(" face |")) {
+//            qDebug() << line.simplified().split(" ");
+            QStringList data = line.simplified().split(" ");
+            recieveTotal += data[1].toLong();
+            uploadTotal += data[9].toLong();
+        } else {
+//            qDebug() << "HEaders";
+        }
+        line = in.readLine();
+    }
+
+    if(networkLineSeriesVector.size() == 0) {
+        //Making the network line
+        //Initially since we need the change to plot a point it is 0
+        QLineSeries *recievingLineSeries = new QLineSeries();
+        for(int i = 60; i >= 0 ; i--) {
+            recievingLineSeries->append(i,0);
+        }
+        recievingLineSeries->setName("Recieving: 0 KiB/s | Total Recieved: " + bytesToMebibytesString(recieveTotal));
+
+        networkLineSeriesVector.push_back(recievingLineSeries);
+
+        QLineSeries *sendingLineSeries = new QLineSeries();
+        for(int i = 60; i >= 0 ; i--) {
+            sendingLineSeries->append(i,0);
+        }
+        sendingLineSeries->setName("Recieving: 0 KiB/s | Total Recieved: " + bytesToMebibytesString(uploadTotal));
+        networkLineSeriesVector.push_back(sendingLineSeries);
+
+        createNetworkBarChart();
+    } else {
+        int recieveIndex  = 0;
+        int sendIndex  = 1;
+        //recieve index is at 0 and send is at 1
+        int recieveKib = (recieveTotal - recievedLast) / 1024;
+        int sendKib = (uploadTotal - uploadLast) / 1024;
+
+          //For recieve
+        for(int i = 60; i > 0; i--){
+            QPointF point = networkLineSeriesVector[recieveIndex]->at(i);
+            point.setY(networkLineSeriesVector[recieveIndex]->at(i - 1).y());
+            networkLineSeriesVector[recieveIndex]->replace(i, point);
+        }
+
+        QPointF point = networkLineSeriesVector[recieveIndex]->at(0);
+        point.setY(recieveKib);
+        networkLineSeriesVector[recieveIndex]->setName("Recieving: "+ bytesToMebibytesString(recieveKib * 1024)+"/s | Total Recieved: " + bytesToMebibytesString(recieveTotal));
+        networkLineSeriesVector[recieveIndex]->replace(0, point);
+
+        //For send
+
+        for(int i = 60; i > 0; i--){
+            QPointF point = networkLineSeriesVector[sendIndex]->at(i);
+            point.setY(networkLineSeriesVector[sendIndex]->at(i - 1).y());
+            networkLineSeriesVector[sendIndex]->replace(i, point);
+        }
+        point = networkLineSeriesVector[sendIndex]->at(0);
+        point.setY(sendKib);
+        networkLineSeriesVector[sendIndex]->setName("Sending: "+ bytesToMebibytesString(sendKib * 1024)+"/s | Total Sent: " + bytesToMebibytesString(recieveTotal));
+
+        networkLineSeriesVector[sendIndex]->replace(0, point);
+        updateNetworkBarChart();
+    }
+
+//    qDebug() << "Recieved:"
+//             << bytesToMebibytesString(recieveTotal);
+//    qDebug() << "Trans:"
+//             << bytesToMebibytesString(uploadTotal);
+    recievedLast = recieveTotal;
+    uploadLast = uploadTotal;
+}
+
+
 
 void MainWindow::updateRamSwapBarChart() {
     QChart *lineChart = new QChart();
@@ -157,28 +319,24 @@ void MainWindow::updateRamSwapResourceInfo() {
 
             if (list.size() >= 2) {
                 totalMemory = list[1].toDouble();
-                qDebug() << "Total RAM:" << totalMemory / 1048576 << "GB"; // Convert to GB
             }
         } else if (line.startsWith("MemAvailable:")) {
             QStringList list = line.simplified().split(" ");
 
             if (list.size() >= 2) {
                 freeMemory = list[1].toDouble();
-                qDebug() << "Avail:" << freeMemory / 1048576 << "GB"; // Convert to GB
             }
         } else if (line.startsWith("SwapTotal:")) {
             QStringList list = line.simplified().split(" ");
 
             if (list.size() >= 2) {
                 swapTotal = list[1].toDouble();
-                qDebug() << "Swap Total:" << swapTotal / 1048576 << "GB"; // Convert to GB
             }
         } else if (line.startsWith("SwapFree:")) {
             QStringList list = line.simplified().split(" ");
 
             if (list.size() >= 2) {
                 swapFree = list[1].toDouble();
-                qDebug() << "SwapFree:" << swapFree / 1048576 << "GB"; // Convert to GB
             }
         }
         line = in.readLine();
@@ -186,7 +344,6 @@ void MainWindow::updateRamSwapResourceInfo() {
     double memUsage = ((totalMemory - freeMemory) / totalMemory) * 100;
     double swapUsage = ((swapTotal - swapFree) / swapTotal) * 100;
 
-    qDebug() << memUsage;
     //Initialize the vector
     if(ramSwapLineSeriesVector.size() == 0) {
         //Making the ram line
@@ -447,12 +604,19 @@ void MainWindow::updateCPUResourceInfo() {
 
 QString MainWindow::bytesToMebibytesString(unsigned long bytes) {
     const double mebibyte = 1024 * 1024; // 1 Mebibyte = 1024 * 1024 bytes
-    if(bytes < 1000) {
+    if(bytes < 256) {
         QString result = QString::number(bytes, 'f', 1);
         result.append(" bytes");
         return result;
     }
+    double kibibytes = bytes / 1024;
     double mebibytes = bytes / mebibyte;
+
+    if(kibibytes < 100) {
+        QString result = QString::number(kibibytes, 'f', 1);
+        result.append(" KiB");
+        return result;
+    }
 
     if(mebibytes > 100) {
         double gibibytes = mebibytes / 1024;
@@ -664,7 +828,7 @@ void MainWindow::updateSystemInfo() {
     if (diskSpace != -1) {
         QString diskSpaceInfo = QString("Available disk space: %1 GB").arg(diskSpace, 0, 'f', 1);
         ui->listWidget->addItem(diskSpaceInfo);
-        qDebug() << diskSpaceInfo;
+//        qDebug() << diskSpaceInfo;
     }
 }
 

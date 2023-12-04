@@ -25,12 +25,19 @@ public:
     void updateCpuBarChart();
     void createRamSwapBarChart();
     void updateRamSwapBarChart();
+    void createNetworkBarChart();
+    void updateNetworkBarChart();
     void updateGraphs();
+    void updateNetworkResourceInfo();
     void updateRamSwapResourceInfo();
     std::vector<QLineSeries*> cpuLineSeriesVector; // Vector of QLineSeries pointers
     std::vector<QLineSeries*> ramSwapLineSeriesVector; // Vector of QLineSeries pointers
+    std::vector<QLineSeries*> networkLineSeriesVector;
     QChartView *cpuChartView;
     QChartView *ramSwapChartView;
+    QChartView *networkChartView;
+    int recievedLast;
+    int uploadLast;
 //    void updateCPUResourceInfo();
     QString kbToMiB(const QString &memLine);
     MainWindow(QWidget *parent = nullptr);
