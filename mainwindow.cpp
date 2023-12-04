@@ -4,6 +4,8 @@
 #include <QTextStream>
 #include <QDebug>
 #include <QRegExp>
+#include <QtCharts>
+#include <QMainWindow>
 #include <filesystem>
 #include <QStorageInfo>
 #include <QTimer>
@@ -14,51 +16,481 @@
 #include <unistd.h>
 #define GB (1024 * 1024 * 1024)
 
+std::vector<QLineSeries*> cpuLineSeriesVector;
+std::vector<QLineSeries*> ramSwapLineSeriesVector;
+std::vector<QLineSeries*> networkLineSeriesVector;
+std::vector<int> cpuLastIdle;
+std::vector<int> cpuLastUsed;
+int recievedLast;
+int uploadLast;
+QChartView *cpuChartView;
+QChartView *ramSwapChartView;
+QChartView *networkChartView;
 
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
+
     ui->setupUi(this);
     updateSystemInfo();
     updateProcesses(false, false);
     updateFileSystemInfo();
     updateCPUResourceInfo();
+    updateRamSwapResourceInfo();
+    updateNetworkResourceInfo();
     // Create a QTimer object
-    cpuInfoTimer = new QTimer(this);
+    graphInfoTimer = new QTimer(this);
 
     // Set the interval to 1000 milliseconds (1 second)
-    cpuInfoTimer->setInterval(1000);
+    graphInfoTimer->setInterval(1000);
 
     // Connect the timer's timeout signal to the updateCPUResourceInfo slot
-    connect(cpuInfoTimer, &QTimer::timeout, this, &MainWindow::updateCPUResourceInfo);
+    connect(graphInfoTimer, &QTimer::timeout, this, &MainWindow::updateGraphs);
 
     // Start the timer
-    cpuInfoTimer->start();
-    connect(ui->comboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(onProcessFilterChanged(int)));
-    connect(ui->pushButton, SIGNAL(clicked()), this, SLOT(pushButton_clicked()));
-
-    int desiredWidth = 300; // Set this to your desired width in pixels
-    ui->treeWidget->setColumnWidth(0, desiredWidth);
-
-    QCoreApplication::setApplicationName("Linux Task Manager");
-    setWindowTitle( QCoreApplication::applicationName() );
-
-    ui->treeWidget->setStyleSheet("QTreeView::branch { border-image: url(none); }"); // Optional, for styling
-    ui->treeWidget->setRootIsDecorated(true); // Ensure root decoration is enabled
-    ui->treeWidget->setUniformRowHeights(false); // For performance
-    ui->treeWidget->setItemsExpandable(true); // Ensure items are expandable
-    ui->treeWidget->setExpandsOnDoubleClick(true); // Expand/collapse on double-click
-    ui->treeWidget->setAnimated(true); // Enable animations
-    ui->treeWidget->setAllColumnsShowFocus(true); // Focus on all columns
-    ui->treeWidget->setAlternatingRowColors(true); // For better readability
-    ui->treeWidget->setSortingEnabled(true); // Enable sorting if needed
+    graphInfoTimer->start();
 }
 
-MainWindow::~MainWindow()
-{
+MainWindow::~MainWindow() {
+    for (QLineSeries* series : cpuLineSeriesVector) {
+            delete series; // Release memory for each QLineSeries
+    }
+    for (QLineSeries* series : ramSwapLineSeriesVector) {
+            delete series; // Release memory for each QLineSeries
+    }
     delete ui;
+}
+
+void MainWindow::updateGraphs(){
+    updateCPUResourceInfo();
+    updateRamSwapResourceInfo();
+    updateNetworkResourceInfo();
+}
+void MainWindow::createNetworkBarChart() {
+    QChart *lineChart = new QChart();
+
+
+    lineChart->setTitle("Network History");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 20);
+    axisY->setLabelFormat("%.0f KiB/s");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 6));
+
+    for (int i = 0; (i < (int)networkLineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(networkLineSeriesVector[i]);
+        networkLineSeriesVector[i]->attachAxis(axisY);
+    }
+
+
+    networkChartView = new QChartView(lineChart);
+
+    networkChartView->setRenderHint(QPainter::Antialiasing);
+    ui->tab_3->layout()->addWidget(networkChartView);
+}
+void MainWindow::updateNetworkBarChart() {
+    QChart *lineChart = new QChart();
+
+    lineChart->setTitle("Network History");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 20);
+    axisY->setLabelFormat("%.0f KiB/s");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 6));
+
+    for (int i = 0; (i < (int)networkLineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(networkLineSeriesVector[i]);
+        networkLineSeriesVector[i]->attachAxis(axisY);
+    }
+    networkChartView->setChart(lineChart);
+}
+
+void MainWindow::updateNetworkResourceInfo() {
+    QTextStream in;
+    QString info;
+    QString line;
+    long recieveTotal = 0;
+    long uploadTotal = 0;
+    QFile file("/proc/net/dev");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qDebug() << "Failed to open /proc/meminfo";
+        return;
+    }
+
+    in.setDevice(&file);
+    line = in.readLine();
+    //Does Recieve then transmit
+    while(line != nullptr) {
+        if (!line.startsWith("Inter-|") && !line.startsWith(" face |")) {
+//            qDebug() << line.simplified().split(" ");
+            QStringList data = line.simplified().split(" ");
+            recieveTotal += data[1].toLong();
+            uploadTotal += data[9].toLong();
+        } else {
+//            qDebug() << "HEaders";
+        }
+        line = in.readLine();
+    }
+
+    if(networkLineSeriesVector.size() == 0) {
+        //Making the network line
+        //Initially since we need the change to plot a point it is 0
+        QLineSeries *recievingLineSeries = new QLineSeries();
+        for(int i = 60; i >= 0 ; i--) {
+            recievingLineSeries->append(i,0);
+        }
+        recievingLineSeries->setName("Recieving: 0 KiB/s | Total Recieved: " + bytesToMebibytesString(recieveTotal));
+
+        networkLineSeriesVector.push_back(recievingLineSeries);
+
+        QLineSeries *sendingLineSeries = new QLineSeries();
+        for(int i = 60; i >= 0 ; i--) {
+            sendingLineSeries->append(i,0);
+        }
+        sendingLineSeries->setName("Recieving: 0 KiB/s | Total Recieved: " + bytesToMebibytesString(uploadTotal));
+        networkLineSeriesVector.push_back(sendingLineSeries);
+
+        createNetworkBarChart();
+    } else {
+        int recieveIndex  = 0;
+        int sendIndex  = 1;
+        //recieve index is at 0 and send is at 1
+        int recieveKib = (recieveTotal - recievedLast) / 1024;
+        int sendKib = (uploadTotal - uploadLast) / 1024;
+
+          //For recieve
+        for(int i = 60; i > 0; i--){
+            QPointF point = networkLineSeriesVector[recieveIndex]->at(i);
+            point.setY(networkLineSeriesVector[recieveIndex]->at(i - 1).y());
+            networkLineSeriesVector[recieveIndex]->replace(i, point);
+        }
+
+        QPointF point = networkLineSeriesVector[recieveIndex]->at(0);
+        point.setY(recieveKib);
+        networkLineSeriesVector[recieveIndex]->setName("Recieving: "+ bytesToMebibytesString(recieveKib * 1024)+"/s | Total Recieved: " + bytesToMebibytesString(recieveTotal));
+        networkLineSeriesVector[recieveIndex]->replace(0, point);
+
+        //For send
+
+        for(int i = 60; i > 0; i--){
+            QPointF point = networkLineSeriesVector[sendIndex]->at(i);
+            point.setY(networkLineSeriesVector[sendIndex]->at(i - 1).y());
+            networkLineSeriesVector[sendIndex]->replace(i, point);
+        }
+        point = networkLineSeriesVector[sendIndex]->at(0);
+        point.setY(sendKib);
+        networkLineSeriesVector[sendIndex]->setName("Sending: "+ bytesToMebibytesString(sendKib * 1024)+"/s | Total Sent: " + bytesToMebibytesString(recieveTotal));
+
+        networkLineSeriesVector[sendIndex]->replace(0, point);
+        updateNetworkBarChart();
+    }
+
+//    qDebug() << "Recieved:"
+//             << bytesToMebibytesString(recieveTotal);
+//    qDebug() << "Trans:"
+//             << bytesToMebibytesString(uploadTotal);
+    recievedLast = recieveTotal;
+    uploadLast = uploadTotal;
+}
+
+
+
+void MainWindow::updateRamSwapBarChart() {
+    QChart *lineChart = new QChart();
+
+    lineChart->setTitle("Memory and Swap History");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 100);
+    axisY->setLabelFormat("%.0f%%");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 6));
+
+    for (int i = 0; (i < (int)ramSwapLineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(ramSwapLineSeriesVector[i]);
+        ramSwapLineSeriesVector[i]->attachAxis(axisY);
+    }
+    ramSwapChartView->setChart(lineChart);
+}
+
+
+void MainWindow::createRamSwapBarChart() {
+    QChart *lineChart = new QChart();
+
+
+    lineChart->setTitle("Memory and Swap History");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 100);
+    axisY->setLabelFormat("%.0f%%");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 6));
+
+    for (int i = 0; (i < (int)ramSwapLineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(ramSwapLineSeriesVector[i]);
+        ramSwapLineSeriesVector[i]->attachAxis(axisY);
+    }
+
+
+    ramSwapChartView = new QChartView(lineChart);
+
+    ramSwapChartView->setRenderHint(QPainter::Antialiasing);
+    ui->tab_3->layout()->addWidget(ramSwapChartView);
+}
+
+
+void MainWindow::updateRamSwapResourceInfo() {
+    QTextStream in;
+    QString info;
+    QString line;
+
+    QFile file("/proc/meminfo");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qDebug() << "Failed to open /proc/meminfo";
+        return;
+    }
+
+    in.setDevice(&file);
+    line = in.readLine();
+    double totalMemory;
+    double freeMemory;
+    double swapTotal;
+    double swapFree;
+    while (line != nullptr) {
+//        qDebug() << line;
+
+        if (line.startsWith("MemTotal:")) {
+            QStringList list = line.simplified().split(" ");
+
+            if (list.size() >= 2) {
+                totalMemory = list[1].toDouble();
+            }
+        } else if (line.startsWith("MemAvailable:")) {
+            QStringList list = line.simplified().split(" ");
+
+            if (list.size() >= 2) {
+                freeMemory = list[1].toDouble();
+            }
+        } else if (line.startsWith("SwapTotal:")) {
+            QStringList list = line.simplified().split(" ");
+
+            if (list.size() >= 2) {
+                swapTotal = list[1].toDouble();
+            }
+        } else if (line.startsWith("SwapFree:")) {
+            QStringList list = line.simplified().split(" ");
+
+            if (list.size() >= 2) {
+                swapFree = list[1].toDouble();
+            }
+        }
+        line = in.readLine();
+    }
+    double memUsage = ((totalMemory - freeMemory) / totalMemory) * 100;
+    double swapUsage = ((swapTotal - swapFree) / swapTotal) * 100;
+
+    //Initialize the vector
+    if(ramSwapLineSeriesVector.size() == 0) {
+        //Making the ram line
+        QLineSeries *ramLineSeries = new QLineSeries();
+        QString sMemUsage = QString::number(memUsage, 'f', 1);
+        ramLineSeries->setName("Memory: "+ bytesToMebibytesString((totalMemory - freeMemory) * 1024)
+                               + " ("+ sMemUsage + "%) of " + bytesToMebibytesString(totalMemory * 1024));
+        for(int i = 60; i > 0 ; i--) {
+            ramLineSeries->append(i,0);
+        }
+        QPointF point = ramLineSeries->at(0);
+        point.setY(memUsage);
+        ramLineSeries->replace(0, point);
+        ramSwapLineSeriesVector.push_back(ramLineSeries);
+
+
+        QLineSeries *swapLineSeries = new QLineSeries();
+        QString sSwapUsage = QString::number(swapUsage, 'f', 1);
+        swapLineSeries->setName("Swap: " + bytesToMebibytesString((swapTotal - swapFree) * 1024)
+                                + " ("+ sSwapUsage + "%) of " + bytesToMebibytesString(swapTotal * 1024));
+        for(int i = 60; i > 0 ; i--) {
+            swapLineSeries->append(i,0);
+        }
+        point = swapLineSeries->at(0);
+        point.setY(swapUsage);
+        ramSwapLineSeriesVector.push_back(swapLineSeries);
+
+        createRamSwapBarChart();
+    } else {
+        int ramIndex  = 0;
+        int swapIndex  = 1;
+        //Ram index is at 0 and Swap is at 1
+
+        for(int i = 60; i > 0; i--){
+            QPointF point = ramSwapLineSeriesVector[ramIndex]->at(i);
+            point.setY(ramSwapLineSeriesVector[ramIndex]->at(i - 1).y());
+            ramSwapLineSeriesVector[ramIndex]->replace(i, point);
+        }
+        QPointF point = ramSwapLineSeriesVector[ramIndex]->at(0);
+        point.setY(memUsage);
+        ramSwapLineSeriesVector[ramIndex]->replace(0, point);
+
+        //For swap
+
+        for(int i = 60; i > 0; i--){
+            QPointF point = ramSwapLineSeriesVector[swapIndex]->at(i);
+            point.setY(ramSwapLineSeriesVector[swapIndex]->at(i - 1).y());
+            ramSwapLineSeriesVector[swapIndex]->replace(i, point);
+        }
+        point = ramSwapLineSeriesVector[swapIndex]->at(0);
+        point.setY(swapUsage);
+        ramSwapLineSeriesVector[swapIndex]->replace(0, point);
+        updateRamSwapBarChart();
+    }
+
+    file.close();
+}
+
+
+
+void MainWindow::createCpuBarChart() {
+    QChart *lineChart = new QChart();
+
+
+    lineChart->setTitle("CPU stats");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 100);
+    axisY->setLabelFormat("%.0f%%");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 4));
+
+    for (int i = 0; (i < (int)cpuLineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(cpuLineSeriesVector[i]);
+        cpuLineSeriesVector[i]->attachAxis(axisY);
+//        lineChart->addSeries(cpuLineSeriesVector[i]);
+    }
+
+
+    cpuChartView = new QChartView(lineChart);
+
+    cpuChartView->setRenderHint(QPainter::Antialiasing);
+    ui->tab_3->layout()->addWidget(cpuChartView);
+}
+
+void MainWindow::updateCpuBarChart() {
+    QChart *lineChart = new QChart();
+
+    lineChart->setTitle("CPU stats");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 100);
+    axisY->setLabelFormat("%.0f%%");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 4));
+
+    for (int i = 0; (i < (int)cpuLineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(cpuLineSeriesVector[i]);
+        cpuLineSeriesVector[i]->attachAxis(axisY);
+    }
+    cpuChartView->setChart(lineChart);
+//     cpuInfoTimer->start();
+//     connect(ui->comboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(onProcessFilterChanged(int)));
+//     connect(ui->pushButton, SIGNAL(clicked()), this, SLOT(pushButton_clicked()));
+
+//     int desiredWidth = 300; // Set this to your desired width in pixels
+//     ui->treeWidget->setColumnWidth(0, desiredWidth);
+
+//     QCoreApplication::setApplicationName("Linux Task Manager");
+//     setWindowTitle( QCoreApplication::applicationName() );
+
+//     ui->treeWidget->setStyleSheet("QTreeView::branch { border-image: url(none); }"); // Optional, for styling
+//     ui->treeWidget->setRootIsDecorated(true); // Ensure root decoration is enabled
+//     ui->treeWidget->setUniformRowHeights(false); // For performance
+//     ui->treeWidget->setItemsExpandable(true); // Ensure items are expandable
+//     ui->treeWidget->setExpandsOnDoubleClick(true); // Expand/collapse on double-click
+//     ui->treeWidget->setAnimated(true); // Enable animations
+//     ui->treeWidget->setAllColumnsShowFocus(true); // Focus on all columns
+//     ui->treeWidget->setAlternatingRowColors(true); // For better readability
+//     ui->treeWidget->setSortingEnabled(true); // Enable sorting if needed
 }
 
 
@@ -73,33 +505,140 @@ void MainWindow::updateCPUResourceInfo() {
     in.setDevice(&file);
     bool endCPU = false;
     QString line = in.readLine();
-    while (line != nullptr && !endCPU) {
-        if(!line.startsWith("cpu")) {
-            endCPU = true;
-        } else {
-            QStringList data = line.trimmed().split(" ");
-            if(data.size() > 8) {
-                int totalNonIdle = data[1].toInt() + data[2].toInt() + data[3].toInt() +
-                        data[6].toInt() + data[7].toInt() + data[8].toInt() + data[9].toInt() +
-                        data[10].toInt();
-                int totalIdle = data[4].toInt() + data[5].toInt();
-                int totalCPU = totalIdle + totalNonIdle;
-                double cpuUsage = ((double)totalNonIdle)/ ((double)totalCPU) * 100;
-                QString result = QString::number(cpuUsage, 'f', 1);
-                result.append("%");
-                qDebug() << data[0] + ": "
-                         << result;
+
+    //Case where vector has not been initially populated
+    if(cpuLineSeriesVector.size() == 0) {
+        // Create a frame to contain the chart
+        QFrame *frame = new QFrame(ui->tab_3);
+        QVBoxLayout *frameLayout = new QVBoxLayout(frame);
+    //    frameLayout->addWidget(chartView);
+
+
+
+        // Set the frame as the central widget of tab_3
+        ui->tab_3->setLayout(frameLayout);
+        //Creates the new line series and populates it with zero values
+        while (line != nullptr && !endCPU) {
+
+            if(!line.startsWith("cpu")) {
+                endCPU = true;
+            } else {
+
+                QLineSeries *lineSeries = new QLineSeries();
+
+                for(int i = 60; i > 0 ; i--) {
+                    lineSeries->append(i,0);
+                }
+                QStringList data = line.trimmed().split(" ");
+                if(data.size() > 8) {
+                    int totalNonIdle = data[1].toInt() + data[2].toInt() + data[3].toInt() +
+                            data[6].toInt() + data[7].toInt() + data[8].toInt() + data[9].toInt() +
+                            data[10].toInt();
+                    int totalIdle = data[4].toInt() + data[5].toInt();
+                    int totalCPU = totalIdle + totalNonIdle;
+
+                    cpuLastIdle.push_back(totalIdle);
+                    cpuLastUsed.push_back(totalNonIdle);
+
+                    double cpuUsage = ((double)totalNonIdle)/ ((double)totalCPU) * 100;
+                    QString result = QString::number(cpuUsage, 'f', 1);
+                    result.append("%");
+
+                    QPointF point = lineSeries->at(0);
+                    point.setY(cpuUsage);
+                    lineSeries->replace(0, point);
+
+
+                    //THIS CODE IS INTENDED TO MAKE THE LEGEND DIFFERENT LINES
+                    //CURRENTLY DOES NOT WORK
+                    if(cpuLineSeriesVector.size() != 0 && cpuLineSeriesVector.size() % 4 == 0){
+                        QString dataSet = data[0] + "\n";
+                        lineSeries->setName(dataSet);
+                    } else {
+                        lineSeries->setName(data[0]);
+                    }
+
+
+
+                    cpuLineSeriesVector.push_back(lineSeries);
+//                    qDebug() << "ADDED LINE SERIES";
+//                    qDebug() << data[0] + ": "
+//                             << result;
+                }
+
+                line = in.readLine();
             }
-            line = in.readLine();
         }
+        createCpuBarChart();
+        //WORKING ON ELSE
+    } else {
+        int index = 0;
+        while (line != nullptr && !endCPU) {
+            if(!line.startsWith("cpu")) {
+                endCPU = true;//                    int totalCPU = totalIdle + totalNonIdle;
+
+            } else {
+                for(int i = 60; i > 0; i--){
+                    QPointF point = cpuLineSeriesVector[index]->at(i);
+                    point.setY(cpuLineSeriesVector[index]->at(i - 1).y());
+                    cpuLineSeriesVector[index]->replace(i, point);
+                }
+
+
+                QStringList data = line.trimmed().split(" ");
+                if(data.size() > 8) {
+                    int totalNonIdle = data[1].toInt() + data[2].toInt() + data[3].toInt() +
+                            data[6].toInt() + data[7].toInt() + data[8].toInt() + data[9].toInt() +
+                            data[10].toInt();
+                    int totalIdle = data[4].toInt() + data[5].toInt();
+//                    int totalCPU = totalIdle + totalNonIdle;
+
+                    int changeIdle = totalIdle - cpuLastIdle.at(index);
+                    int changeUse = totalNonIdle - cpuLastUsed.at(index);
+                    int changeTotal = changeIdle + changeUse;
+                    double cpuUsage = ((double)changeUse)/ ((double)changeTotal) * 100;
+
+//                    double cpuUsage = ((double)totalNonIdle)/ ((double)totalCPU) * 100;
+
+                    QString result = QString::number(cpuUsage, 'f', 1);
+                    result.append("%");
+//                    qDebug() << data[0] + ": "
+//                             << result;
+                    QPointF point = cpuLineSeriesVector[index]->at(0);
+//                    point.setY(cpuUsage + (rand() % 100));
+                    //Unsure why cpuUsage is not changing from /proc/stat
+
+                    point.setY(cpuUsage);
+
+                    cpuLineSeriesVector[index]->replace(0, point);
+                    index++;
+
+                }
+
+                line = in.readLine();
+            }
+        }
+        updateCpuBarChart();
     }
 }
 
 QString MainWindow::bytesToMebibytesString(unsigned long bytes) {
     const double mebibyte = 1024 * 1024; // 1 Mebibyte = 1024 * 1024 bytes
+    if(bytes < 256) {
+        QString result = QString::number(bytes, 'f', 1);
+        result.append(" bytes");
+        return result;
+    }
+    double kibibytes = bytes / 1024;
     double mebibytes = bytes / mebibyte;
 
-    if(mebibytes > 1000) {
+    if(kibibytes < 100) {
+        QString result = QString::number(kibibytes, 'f', 1);
+        result.append(" KiB");
+        return result;
+    }
+
+    if(mebibytes > 100) {
         double gibibytes = mebibytes / 1024;
         QString result = QString::number(gibibytes, 'f', 1);
         result.append(" GiB");
@@ -398,7 +937,6 @@ void MainWindow::updateSystemInfo() {
         printAll(info, in);
         file.close();
     }
-
     file.setFileName("/proc/meminfo");
     if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         in.setDevice(&file);
@@ -444,7 +982,7 @@ void MainWindow::updateSystemInfo() {
     if (diskSpace != -1) {
         QString diskSpaceInfo = QString("Available disk space: %1 GB").arg(diskSpace, 0, 'f', 1);
         ui->listWidget->addItem(diskSpaceInfo);
-        qDebug() << diskSpaceInfo;
+//        qDebug() << diskSpaceInfo;
     }
 }
 

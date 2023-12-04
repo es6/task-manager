@@ -3,6 +3,8 @@
 
 #include <QMainWindow>
 #include <QTextStream>
+#include <QtCharts>
+
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -29,6 +31,25 @@ public:
     void updateFileSystemInfo();
     void printAll(QString info, QTextStream &in);
     QString bytesToMebibytesString(unsigned long bytes);
+    void updateProcesses();
+    void createCpuBarChart();
+    void updateCpuBarChart();
+    void createRamSwapBarChart();
+    void updateRamSwapBarChart();
+    void createNetworkBarChart();
+    void updateNetworkBarChart();
+    void updateGraphs();
+    void updateNetworkResourceInfo();
+    void updateRamSwapResourceInfo();
+    std::vector<QLineSeries*> cpuLineSeriesVector; // Vector of QLineSeries pointers
+    std::vector<QLineSeries*> ramSwapLineSeriesVector; // Vector of QLineSeries pointers
+    std::vector<QLineSeries*> networkLineSeriesVector;
+    QChartView *cpuChartView;
+    QChartView *ramSwapChartView;
+    QChartView *networkChartView;
+    int recievedLast;
+    int uploadLast;
+//    void updateCPUResourceInfo();
     void updateProcesses(bool showOnlyUserProcess, bool treeView);
     QString kbToMiB(const QString &memLine);
     QString getProcessUid(const QString &statusPath);
@@ -45,6 +66,6 @@ private slots:
 
 private:
     Ui::MainWindow *ui;
-    QTimer *cpuInfoTimer; // QTimer object to trigger updates
+    QTimer *graphInfoTimer; // QTimer object to trigger updates
 };
 #endif // MAINWINDOW_H
