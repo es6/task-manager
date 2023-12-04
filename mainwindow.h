@@ -21,10 +21,16 @@ public:
     void printAll(QString info, QTextStream &in);
     QString bytesToMebibytesString(unsigned long bytes);
     void updateProcesses();
-    void createBarChart();
-    void updateBarChart();
-    std::vector<QLineSeries*> lineSeriesVector; // Vector of QLineSeries pointers
-    QChartView *chartView;
+    void createCpuBarChart();
+    void updateCpuBarChart();
+    void createRamSwapBarChart();
+    void updateRamSwapBarChart();
+    void updateGraphs();
+    void updateRamSwapResourceInfo();
+    std::vector<QLineSeries*> cpuLineSeriesVector; // Vector of QLineSeries pointers
+    std::vector<QLineSeries*> ramSwapLineSeriesVector; // Vector of QLineSeries pointers
+    QChartView *cpuChartView;
+    QChartView *ramSwapChartView;
 //    void updateCPUResourceInfo();
     QString kbToMiB(const QString &memLine);
     MainWindow(QWidget *parent = nullptr);
@@ -35,6 +41,6 @@ private slots:
 
 private:
     Ui::MainWindow *ui;
-    QTimer *cpuInfoTimer; // QTimer object to trigger updates
+    QTimer *graphInfoTimer; // QTimer object to trigger updates
 };
 #endif // MAINWINDOW_H

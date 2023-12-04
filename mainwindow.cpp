@@ -14,8 +14,15 @@
 #include <QStringList>
 #include <sys/statvfs.h>
 #define GB (1024 * 1024 * 1024)
-std::vector<QLineSeries*> lineSeriesVector;
-QChartView *chartView;
+
+std::vector<QLineSeries*> cpuLineSeriesVector;
+std::vector<QLineSeries*> ramSwapLineSeriesVector;
+std::vector<int> cpuLastIdle;
+std::vector<int> cpuLastUsed;
+QChartView *cpuChartView;
+QChartView *ramSwapChartView;
+
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -26,78 +33,259 @@ MainWindow::MainWindow(QWidget *parent)
     updateProcesses();
     updateFileSystemInfo();
     updateCPUResourceInfo();
+    updateRamSwapResourceInfo();
     // Create a QTimer object
-    cpuInfoTimer = new QTimer(this);
+    graphInfoTimer = new QTimer(this);
 
     // Set the interval to 1000 milliseconds (1 second)
-    cpuInfoTimer->setInterval(1000);
+    graphInfoTimer->setInterval(1000);
 
     // Connect the timer's timeout signal to the updateCPUResourceInfo slot
-    connect(cpuInfoTimer, &QTimer::timeout, this, &MainWindow::updateCPUResourceInfo);
+    connect(graphInfoTimer, &QTimer::timeout, this, &MainWindow::updateGraphs);
 
     // Start the timer
-    cpuInfoTimer->start();
+    graphInfoTimer->start();
 }
 
-MainWindow::~MainWindow()
-{
-    for (QLineSeries* series : lineSeriesVector) {
+MainWindow::~MainWindow() {
+    for (QLineSeries* series : cpuLineSeriesVector) {
+            delete series; // Release memory for each QLineSeries
+    }
+    for (QLineSeries* series : ramSwapLineSeriesVector) {
             delete series; // Release memory for each QLineSeries
     }
     delete ui;
 }
 
-
-void MainWindow::createBarChart() {
-    QChart *lineChart = new QChart();
-
-
-    lineChart->setTitle("CPU stats");
-
-    QValueAxis *axisX = new QValueAxis();
-    axisX->setTitleText("Seconds");
-    axisX->setRange(0, 60);
-    axisX->setReverse(true);
-    lineChart->addAxis(axisX, Qt::AlignBottom);
-
-    QValueAxis *axisY = new QValueAxis();
-    axisY->setRange(0, 100);
-    axisY->setLabelFormat("%.0f%%");
-    lineChart->addAxis(axisY, Qt::AlignLeft);
-
-
-    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
-
-    // Set legend alignment to horizontally spaced out
-    lineChart->legend()->setAlignment(Qt::AlignBottom);
-    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
-    lineChart->legend()->setFont(QFont("Arial", 4));
-
-    for (int i = 0; (i < (int)lineSeriesVector.size()) ; i++) {
-        lineChart->addSeries(lineSeriesVector[i]);
-        lineSeriesVector[i]->attachAxis(axisY);
-//        lineChart->addSeries(lineSeriesVector[i]);
-    }
-
-
-    chartView = new QChartView(lineChart);
-
-    chartView->setRenderHint(QPainter::Antialiasing);
-
-//    // Create a frame to contain the chart
-//    QFrame *frame = new QFrame(ui->tab_3);
-//    QVBoxLayout *frameLayout = new QVBoxLayout(frame);
-//    frameLayout->addWidget(chartView);
-
-
-
-//    // Set the frame as the central widget of tab_3
-//    ui->tab_3->setLayout(frameLayout);
-    ui->tab_3->layout()->addWidget(chartView);
-
+void MainWindow::updateGraphs(){
+    updateCPUResourceInfo();
+    updateRamSwapResourceInfo();
 }
 
-void MainWindow::updateBarChart() {
+void MainWindow::updateRamSwapBarChart() {
+    QChart *lineChart = new QChart();
+
+    lineChart->setTitle("Memory and Swap History");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 100);
+    axisY->setLabelFormat("%.0f%%");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 6));
+
+    for (int i = 0; (i < (int)ramSwapLineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(ramSwapLineSeriesVector[i]);
+        ramSwapLineSeriesVector[i]->attachAxis(axisY);
+    }
+    ramSwapChartView->setChart(lineChart);
+}
+
+
+void MainWindow::createRamSwapBarChart() {
+    QChart *lineChart = new QChart();
+
+
+    lineChart->setTitle("Memory and Swap History");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 100);
+    axisY->setLabelFormat("%.0f%%");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 6));
+
+    for (int i = 0; (i < (int)ramSwapLineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(ramSwapLineSeriesVector[i]);
+        ramSwapLineSeriesVector[i]->attachAxis(axisY);
+    }
+
+
+    ramSwapChartView = new QChartView(lineChart);
+
+    ramSwapChartView->setRenderHint(QPainter::Antialiasing);
+    ui->tab_3->layout()->addWidget(ramSwapChartView);
+}
+
+
+void MainWindow::updateRamSwapResourceInfo() {
+    QTextStream in;
+    QString info;
+    QString line;
+
+    QFile file("/proc/meminfo");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qDebug() << "Failed to open /proc/meminfo";
+        return;
+    }
+
+    in.setDevice(&file);
+    line = in.readLine();
+    double totalMemory;
+    double freeMemory;
+    double swapTotal;
+    double swapFree;
+    while (line != nullptr) {
+//        qDebug() << line;
+
+        if (line.startsWith("MemTotal:")) {
+            QStringList list = line.simplified().split(" ");
+
+            if (list.size() >= 2) {
+                totalMemory = list[1].toDouble();
+                qDebug() << "Total RAM:" << totalMemory / 1048576 << "GB"; // Convert to GB
+            }
+        } else if (line.startsWith("MemAvailable:")) {
+            QStringList list = line.simplified().split(" ");
+
+            if (list.size() >= 2) {
+                freeMemory = list[1].toDouble();
+                qDebug() << "Avail:" << freeMemory / 1048576 << "GB"; // Convert to GB
+            }
+        } else if (line.startsWith("SwapTotal:")) {
+            QStringList list = line.simplified().split(" ");
+
+            if (list.size() >= 2) {
+                swapTotal = list[1].toDouble();
+                qDebug() << "Swap Total:" << swapTotal / 1048576 << "GB"; // Convert to GB
+            }
+        } else if (line.startsWith("SwapFree:")) {
+            QStringList list = line.simplified().split(" ");
+
+            if (list.size() >= 2) {
+                swapFree = list[1].toDouble();
+                qDebug() << "SwapFree:" << swapFree / 1048576 << "GB"; // Convert to GB
+            }
+        }
+        line = in.readLine();
+    }
+    double memUsage = ((totalMemory - freeMemory) / totalMemory) * 100;
+    double swapUsage = ((swapTotal - swapFree) / swapTotal) * 100;
+
+    qDebug() << memUsage;
+    //Initialize the vector
+    if(ramSwapLineSeriesVector.size() == 0) {
+        //Making the ram line
+        QLineSeries *ramLineSeries = new QLineSeries();
+        QString sMemUsage = QString::number(memUsage, 'f', 1);
+        ramLineSeries->setName("Memory: "+ bytesToMebibytesString((totalMemory - freeMemory) * 1024)
+                               + " ("+ sMemUsage + "%) of " + bytesToMebibytesString(totalMemory * 1024));
+        for(int i = 60; i > 0 ; i--) {
+            ramLineSeries->append(i,0);
+        }
+        QPointF point = ramLineSeries->at(0);
+        point.setY(memUsage);
+        ramLineSeries->replace(0, point);
+        ramSwapLineSeriesVector.push_back(ramLineSeries);
+
+
+        QLineSeries *swapLineSeries = new QLineSeries();
+        QString sSwapUsage = QString::number(swapUsage, 'f', 1);
+        swapLineSeries->setName("Swap: " + bytesToMebibytesString((swapTotal - swapFree) * 1024)
+                                + " ("+ sSwapUsage + "%) of " + bytesToMebibytesString(swapTotal * 1024));
+        for(int i = 60; i > 0 ; i--) {
+            swapLineSeries->append(i,0);
+        }
+        point = swapLineSeries->at(0);
+        point.setY(swapUsage);
+        ramSwapLineSeriesVector.push_back(swapLineSeries);
+
+        createRamSwapBarChart();
+    } else {
+        int ramIndex  = 0;
+        int swapIndex  = 1;
+        //Ram index is at 0 and Swap is at 1
+
+        for(int i = 60; i > 0; i--){
+            QPointF point = ramSwapLineSeriesVector[ramIndex]->at(i);
+            point.setY(ramSwapLineSeriesVector[ramIndex]->at(i - 1).y());
+            ramSwapLineSeriesVector[ramIndex]->replace(i, point);
+        }
+        QPointF point = ramSwapLineSeriesVector[ramIndex]->at(0);
+        point.setY(memUsage);
+        ramSwapLineSeriesVector[ramIndex]->replace(0, point);
+
+        //For swap
+
+        for(int i = 60; i > 0; i--){
+            QPointF point = ramSwapLineSeriesVector[swapIndex]->at(i);
+            point.setY(ramSwapLineSeriesVector[swapIndex]->at(i - 1).y());
+            ramSwapLineSeriesVector[swapIndex]->replace(i, point);
+        }
+        point = ramSwapLineSeriesVector[swapIndex]->at(0);
+        point.setY(swapUsage);
+        ramSwapLineSeriesVector[swapIndex]->replace(0, point);
+        updateRamSwapBarChart();
+    }
+
+    file.close();
+}
+
+
+
+void MainWindow::createCpuBarChart() {
+    QChart *lineChart = new QChart();
+
+
+    lineChart->setTitle("CPU stats");
+
+    QValueAxis *axisX = new QValueAxis();
+    axisX->setTitleText("Seconds");
+    axisX->setRange(0, 60);
+    axisX->setReverse(true);
+    lineChart->addAxis(axisX, Qt::AlignBottom);
+
+    QValueAxis *axisY = new QValueAxis();
+    axisY->setRange(0, 100);
+    axisY->setLabelFormat("%.0f%%");
+    lineChart->addAxis(axisY, Qt::AlignLeft);
+
+
+    lineChart->legend()->setMarkerShape(QLegend::MarkerShapeFromSeries);
+
+    // Set legend alignment to horizontally spaced out
+    lineChart->legend()->setAlignment(Qt::AlignBottom);
+    lineChart->legend()->setContentsMargins(0, 0, 0, 0);
+    lineChart->legend()->setFont(QFont("Arial", 4));
+
+    for (int i = 0; (i < (int)cpuLineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(cpuLineSeriesVector[i]);
+        cpuLineSeriesVector[i]->attachAxis(axisY);
+//        lineChart->addSeries(cpuLineSeriesVector[i]);
+    }
+
+
+    cpuChartView = new QChartView(lineChart);
+
+    cpuChartView->setRenderHint(QPainter::Antialiasing);
+    ui->tab_3->layout()->addWidget(cpuChartView);
+}
+
+void MainWindow::updateCpuBarChart() {
     QChart *lineChart = new QChart();
 
     lineChart->setTitle("CPU stats");
@@ -121,11 +309,11 @@ void MainWindow::updateBarChart() {
     lineChart->legend()->setContentsMargins(0, 0, 0, 0);
     lineChart->legend()->setFont(QFont("Arial", 4));
 
-    for (int i = 0; (i < (int)lineSeriesVector.size()) ; i++) {
-        lineChart->addSeries(lineSeriesVector[i]);
-        lineSeriesVector[i]->attachAxis(axisY);
+    for (int i = 0; (i < (int)cpuLineSeriesVector.size()) ; i++) {
+        lineChart->addSeries(cpuLineSeriesVector[i]);
+        cpuLineSeriesVector[i]->attachAxis(axisY);
     }
-        chartView->setChart(lineChart);
+    cpuChartView->setChart(lineChart);
 }
 
 
@@ -142,7 +330,7 @@ void MainWindow::updateCPUResourceInfo() {
     QString line = in.readLine();
 
     //Case where vector has not been initially populated
-    if(lineSeriesVector.size() == 0) {
+    if(cpuLineSeriesVector.size() == 0) {
         // Create a frame to contain the chart
         QFrame *frame = new QFrame(ui->tab_3);
         QVBoxLayout *frameLayout = new QVBoxLayout(frame);
@@ -171,6 +359,10 @@ void MainWindow::updateCPUResourceInfo() {
                             data[10].toInt();
                     int totalIdle = data[4].toInt() + data[5].toInt();
                     int totalCPU = totalIdle + totalNonIdle;
+
+                    cpuLastIdle.push_back(totalIdle);
+                    cpuLastUsed.push_back(totalNonIdle);
+
                     double cpuUsage = ((double)totalNonIdle)/ ((double)totalCPU) * 100;
                     QString result = QString::number(cpuUsage, 'f', 1);
                     result.append("%");
@@ -179,9 +371,10 @@ void MainWindow::updateCPUResourceInfo() {
                     point.setY(cpuUsage);
                     lineSeries->replace(0, point);
 
+
                     //THIS CODE IS INTENDED TO MAKE THE LEGEND DIFFERENT LINES
                     //CURRENTLY DOES NOT WORK
-                    if(lineSeriesVector.size() != 0 && lineSeriesVector.size() % 4 == 0){
+                    if(cpuLineSeriesVector.size() != 0 && cpuLineSeriesVector.size() % 4 == 0){
                         QString dataSet = data[0] + "\n";
                         lineSeries->setName(dataSet);
                     } else {
@@ -190,8 +383,8 @@ void MainWindow::updateCPUResourceInfo() {
 
 
 
-                    lineSeriesVector.push_back(lineSeries);
-                    qDebug() << "ADDED LINE SERIES";
+                    cpuLineSeriesVector.push_back(lineSeries);
+//                    qDebug() << "ADDED LINE SERIES";
 //                    qDebug() << data[0] + ": "
 //                             << result;
                 }
@@ -199,22 +392,21 @@ void MainWindow::updateCPUResourceInfo() {
                 line = in.readLine();
             }
         }
-        createBarChart();
+        createCpuBarChart();
         //WORKING ON ELSE
     } else {
         int index = 0;
         while (line != nullptr && !endCPU) {
             if(!line.startsWith("cpu")) {
-                endCPU = true;
+                endCPU = true;//                    int totalCPU = totalIdle + totalNonIdle;
+
             } else {
-//                QPointF point = lineSeriesVector[index]->at(40);
-//                point.setY(40);
-//                lineSeriesVector[index]->replace(40, point);
                 for(int i = 60; i > 0; i--){
-                    QPointF point = lineSeriesVector[index]->at(i);
-                    point.setY(lineSeriesVector[index]->at(i - 1).y());
-                    lineSeriesVector[index]->replace(i, point);
+                    QPointF point = cpuLineSeriesVector[index]->at(i);
+                    point.setY(cpuLineSeriesVector[index]->at(i - 1).y());
+                    cpuLineSeriesVector[index]->replace(i, point);
                 }
+
 
                 QStringList data = line.trimmed().split(" ");
                 if(data.size() > 8) {
@@ -222,26 +414,47 @@ void MainWindow::updateCPUResourceInfo() {
                             data[6].toInt() + data[7].toInt() + data[8].toInt() + data[9].toInt() +
                             data[10].toInt();
                     int totalIdle = data[4].toInt() + data[5].toInt();
-                    int totalCPU = totalIdle + totalNonIdle;
-                    double cpuUsage = ((double)totalNonIdle)/ ((double)totalCPU) * 100;
+//                    int totalCPU = totalIdle + totalNonIdle;
+
+                    int changeIdle = totalIdle - cpuLastIdle.at(index);
+                    int changeUse = totalNonIdle - cpuLastUsed.at(index);
+                    int changeTotal = changeIdle + changeUse;
+                    double cpuUsage = ((double)changeUse)/ ((double)changeTotal) * 100;
+
+//                    double cpuUsage = ((double)totalNonIdle)/ ((double)totalCPU) * 100;
+
                     QString result = QString::number(cpuUsage, 'f', 1);
                     result.append("%");
-                    qDebug() << data[0] + ": "
-                             << result;
+//                    qDebug() << data[0] + ": "
+//                             << result;
+                    QPointF point = cpuLineSeriesVector[index]->at(0);
+//                    point.setY(cpuUsage + (rand() % 100));
+                    //Unsure why cpuUsage is not changing from /proc/stat
+
+                    point.setY(cpuUsage);
+
+                    cpuLineSeriesVector[index]->replace(0, point);
                     index++;
+
                 }
+
                 line = in.readLine();
             }
         }
-        updateBarChart();
+        updateCpuBarChart();
     }
 }
 
 QString MainWindow::bytesToMebibytesString(unsigned long bytes) {
     const double mebibyte = 1024 * 1024; // 1 Mebibyte = 1024 * 1024 bytes
+    if(bytes < 1000) {
+        QString result = QString::number(bytes, 'f', 1);
+        result.append(" bytes");
+        return result;
+    }
     double mebibytes = bytes / mebibyte;
 
-    if(mebibytes > 1000) {
+    if(mebibytes > 100) {
         double gibibytes = mebibytes / 1024;
         QString result = QString::number(gibibytes, 'f', 1);
         result.append(" GiB");
@@ -406,7 +619,6 @@ void MainWindow::updateSystemInfo() {
         printAll(info, in);
         file.close();
     }
-
     file.setFileName("/proc/meminfo");
     if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         in.setDevice(&file);
