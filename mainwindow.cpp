@@ -1099,19 +1099,69 @@ void MainWindow::showMemoryMapsDialog(const QStringList &lines) {
     QDialog *dialog = new QDialog(this);
     dialog->setWindowTitle(tr("Memory Maps"));
 
-    QTableWidget *table = new QTableWidget(lines.size(), 6, dialog);
+    QTableWidget *table = new QTableWidget(lines.size(), 10, dialog);
     table->setHorizontalHeaderLabels({"Filename", "VM Start", "VM End", "VM Size", "Flags", "VM Offset", "Private Clean", "Private Dirty", "Shared Clean," "Shared Dirty"});
-
+    //each memory map row ends at vmFlags
     int row = 0;
+    int mapCounter = 0;
+    QString fileName, VMStart, VMEnd, VMSize, flags;
+    QString VMOffset, privateClean, privateDirty, sharedClean, sharedDirty;
+
+
+    //loop until 23 this adds a row to the widget
     foreach (const QString &line, lines) {
         if (line.trimmed().isEmpty()) {
             continue;
         }
-        qDebug() << "foreach: " << line;
-        QStringList columns = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts);
-        for (int col = 0; col < columns.size(); ++col) {
-            QTableWidgetItem *item = new QTableWidgetItem(columns[col]);
-            table->setItem(row, col, item);
+
+        if (row == 0) {
+            QStringList columns = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts);
+            VMStart = columns[0].split("-")[0];
+            VMEnd = columns[0].split("-")[1];
+            flags = columns[1];
+            VMOffset = columns[2];
+            fileName = columns[5];
+        }
+        if (line.startsWith("Size:")) {
+            VMSize = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts)[1] + "kB";
+        }
+
+        if (line.startsWith("Shared_Clean:")) {
+            sharedClean = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts)[1] + "kB";
+        }
+        if (line.startsWith("Shared_Dirty:")) {
+            sharedDirty = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts)[1] + "kB";
+        }
+        if (line.startsWith("Private_Clean:")) {
+            privateClean = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts)[1] + "kB";
+        }
+        if (line.startsWith("Private_Dirty:")) {
+            privateDirty = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts)[1] + "kB";
+        }
+
+
+
+        if (row == 23) { //where last vm flags var is -> reset all the QString vars
+            //after setting widgetItem
+            row = -1;
+            //QTableWidgetItem *item = new QTableWidgetItem(columns[1]);
+            qDebug() << fileName << VMStart << VMEnd << VMSize << flags << VMOffset << privateClean << privateDirty << sharedClean << sharedDirty;
+
+            mapCounter++;
+
+
+
+
+            fileName = "";
+            VMStart = "";
+            VMEnd = "";
+            VMSize = "";
+            flags = "";
+            VMOffset = "";
+            privateClean = "";
+            privateDirty = "";
+            sharedClean = "";
+            sharedDirty = "";
         }
         row++;
     }
