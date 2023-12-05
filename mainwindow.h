@@ -47,8 +47,8 @@ public:
     QChartView *cpuChartView;
     QChartView *ramSwapChartView;
     QChartView *networkChartView;
-    int recievedLast;
-    int uploadLast;
+    long recievedLast;
+    long uploadLast;
 //    void updateCPUResourceInfo();
     void updateProcesses(bool showOnlyUserProcess, bool treeView);
     QString kbToMiB(const QString &memLine);

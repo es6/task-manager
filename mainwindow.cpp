@@ -21,8 +21,8 @@ std::vector<QLineSeries*> ramSwapLineSeriesVector;
 std::vector<QLineSeries*> networkLineSeriesVector;
 std::vector<int> cpuLastIdle;
 std::vector<int> cpuLastUsed;
-int recievedLast;
-int uploadLast;
+long recievedLast;
+long uploadLast;
 QChartView *cpuChartView;
 QChartView *ramSwapChartView;
 QChartView *networkChartView;
@@ -40,6 +40,27 @@ MainWindow::MainWindow(QWidget *parent)
     updateCPUResourceInfo();
     updateRamSwapResourceInfo();
     updateNetworkResourceInfo();
+
+    connect(ui->comboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(onProcessFilterChanged(int)));
+    connect(ui->pushButton, SIGNAL(clicked()), this, SLOT(pushButton_clicked()));
+
+    int desiredWidth = 300; // Set this to your desired width in pixels
+    ui->treeWidget->setColumnWidth(0, desiredWidth);
+
+    QCoreApplication::setApplicationName("Linux Task Manager");
+    setWindowTitle( QCoreApplication::applicationName() );
+
+    ui->treeWidget->setStyleSheet("QTreeView::branch { border-image: url(none); }"); // Optional, for styling
+    ui->treeWidget->setRootIsDecorated(true); // Ensure root decoration is enabled
+    ui->treeWidget->setUniformRowHeights(false); // For performance
+    ui->treeWidget->setItemsExpandable(true); // Ensure items are expandable
+    ui->treeWidget->setExpandsOnDoubleClick(true); // Expand/collapse on double-click
+    ui->treeWidget->setAnimated(true); // Enable animations
+    ui->treeWidget->setAllColumnsShowFocus(true); // Focus on all columns
+    ui->treeWidget->setAlternatingRowColors(true); // For better readability
+    ui->treeWidget->setSortingEnabled(true); // Enable sorting if needed
+
+
     // Create a QTimer object
     graphInfoTimer = new QTimer(this);
 
@@ -51,6 +72,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Start the timer
     graphInfoTimer->start();
+
 }
 
 MainWindow::~MainWindow() {
@@ -81,7 +103,7 @@ void MainWindow::createNetworkBarChart() {
     lineChart->addAxis(axisX, Qt::AlignBottom);
 
     QValueAxis *axisY = new QValueAxis();
-    axisY->setRange(0, 20);
+    axisY->setRange(0, 100);
     axisY->setLabelFormat("%.0f KiB/s");
     lineChart->addAxis(axisY, Qt::AlignLeft);
 
@@ -116,7 +138,7 @@ void MainWindow::updateNetworkBarChart() {
     lineChart->addAxis(axisX, Qt::AlignBottom);
 
     QValueAxis *axisY = new QValueAxis();
-    axisY->setRange(0, 20);
+    axisY->setRange(0, 100);
     axisY->setLabelFormat("%.0f KiB/s");
     lineChart->addAxis(axisY, Qt::AlignLeft);
 
@@ -179,15 +201,15 @@ void MainWindow::updateNetworkResourceInfo() {
         }
         sendingLineSeries->setName("Recieving: 0 KiB/s | Total Recieved: " + bytesToMebibytesString(uploadTotal));
         networkLineSeriesVector.push_back(sendingLineSeries);
-
+        recievedLast = recieveTotal;
+        uploadLast = uploadTotal;
         createNetworkBarChart();
     } else {
-        int recieveIndex  = 0;
-        int sendIndex  = 1;
+        long recieveIndex  = 0;
+        long sendIndex  = 1;
         //recieve index is at 0 and send is at 1
-        int recieveKib = (recieveTotal - recievedLast) / 1024;
-        int sendKib = (uploadTotal - uploadLast) / 1024;
-
+        long recieveKib = ((recieveTotal - recievedLast) / 1024);
+        long sendKib = ((uploadTotal - uploadLast) / 1024);
           //For recieve
         for(int i = 60; i > 0; i--){
             QPointF point = networkLineSeriesVector[recieveIndex]->at(i);
@@ -197,7 +219,7 @@ void MainWindow::updateNetworkResourceInfo() {
 
         QPointF point = networkLineSeriesVector[recieveIndex]->at(0);
         point.setY(recieveKib);
-        networkLineSeriesVector[recieveIndex]->setName("Recieving: "+ bytesToMebibytesString(recieveKib * 1024)+"/s | Total Recieved: " + bytesToMebibytesString(recieveTotal));
+        networkLineSeriesVector[recieveIndex]->setName("Recieving: "+ bytesToMebibytesString(recieveKib*1024)+"/s | Total Recieved: " + bytesToMebibytesString(recieveTotal));
         networkLineSeriesVector[recieveIndex]->replace(0, point);
 
         //For send
@@ -212,6 +234,8 @@ void MainWindow::updateNetworkResourceInfo() {
         networkLineSeriesVector[sendIndex]->setName("Sending: "+ bytesToMebibytesString(sendKib * 1024)+"/s | Total Sent: " + bytesToMebibytesString(recieveTotal));
 
         networkLineSeriesVector[sendIndex]->replace(0, point);
+        recievedLast = recieveTotal;
+        uploadLast = uploadTotal;
         updateNetworkBarChart();
     }
 
@@ -219,8 +243,8 @@ void MainWindow::updateNetworkResourceInfo() {
 //             << bytesToMebibytesString(recieveTotal);
 //    qDebug() << "Trans:"
 //             << bytesToMebibytesString(uploadTotal);
-    recievedLast = recieveTotal;
-    uploadLast = uploadTotal;
+//    recievedLast = recieveTotal;
+//    uploadLast = uploadTotal;
 }
 
 
@@ -472,25 +496,6 @@ void MainWindow::updateCpuBarChart() {
         cpuLineSeriesVector[i]->attachAxis(axisY);
     }
     cpuChartView->setChart(lineChart);
-//     cpuInfoTimer->start();
-//     connect(ui->comboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(onProcessFilterChanged(int)));
-//     connect(ui->pushButton, SIGNAL(clicked()), this, SLOT(pushButton_clicked()));
-
-//     int desiredWidth = 300; // Set this to your desired width in pixels
-//     ui->treeWidget->setColumnWidth(0, desiredWidth);
-
-//     QCoreApplication::setApplicationName("Linux Task Manager");
-//     setWindowTitle( QCoreApplication::applicationName() );
-
-//     ui->treeWidget->setStyleSheet("QTreeView::branch { border-image: url(none); }"); // Optional, for styling
-//     ui->treeWidget->setRootIsDecorated(true); // Ensure root decoration is enabled
-//     ui->treeWidget->setUniformRowHeights(false); // For performance
-//     ui->treeWidget->setItemsExpandable(true); // Ensure items are expandable
-//     ui->treeWidget->setExpandsOnDoubleClick(true); // Expand/collapse on double-click
-//     ui->treeWidget->setAnimated(true); // Enable animations
-//     ui->treeWidget->setAllColumnsShowFocus(true); // Focus on all columns
-//     ui->treeWidget->setAlternatingRowColors(true); // For better readability
-//     ui->treeWidget->setSortingEnabled(true); // Enable sorting if needed
 }
 
 
@@ -551,12 +556,9 @@ void MainWindow::updateCPUResourceInfo() {
 
                     //THIS CODE IS INTENDED TO MAKE THE LEGEND DIFFERENT LINES
                     //CURRENTLY DOES NOT WORK
-                    if(cpuLineSeriesVector.size() != 0 && cpuLineSeriesVector.size() % 4 == 0){
-                        QString dataSet = data[0] + "\n";
-                        lineSeries->setName(dataSet);
-                    } else {
-                        lineSeries->setName(data[0]);
-                    }
+                    QString dataSet = data[0] +" (" +result + ")";
+                    lineSeries->setName(dataSet);
+
 
 
 
@@ -576,7 +578,6 @@ void MainWindow::updateCPUResourceInfo() {
         while (line != nullptr && !endCPU) {
             if(!line.startsWith("cpu")) {
                 endCPU = true;//                    int totalCPU = totalIdle + totalNonIdle;
-
             } else {
                 for(int i = 60; i > 0; i--){
                     QPointF point = cpuLineSeriesVector[index]->at(i);
@@ -632,7 +633,7 @@ QString MainWindow::bytesToMebibytesString(unsigned long bytes) {
     double kibibytes = bytes / 1024;
     double mebibytes = bytes / mebibyte;
 
-    if(kibibytes < 100) {
+    if(kibibytes < 1000) {
         QString result = QString::number(kibibytes, 'f', 1);
         result.append(" KiB");
         return result;
