@@ -471,6 +471,7 @@ void MainWindow::showMemoryMapsDialog(const QStringList &lines) {
 }
 
 void MainWindow::listFilesProcess(int pid) {
+    //Random
     QDialog *dialog = new QDialog(this);
     dialog->setWindowTitle(tr("Open Files"));
 
