@@ -1,17 +1,33 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <QFile>
+#include <QMenu>
 #include <QTextStream>
 #include <QDebug>
-#include <QRegExp>
+#include <QDialog>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QVBoxLayout>
+#include <QFileInfo>
+#include <QDateTime>
+#include <QDate>
 #include <QtCharts>
 #include <QMainWindow>
+#include <QTime>
+#include <QFormLayout>
+#include <QLabel>
+#include <QDir>
+#include <QHeaderView>
+#include <QRegExp>
 #include <filesystem>
 #include <QStorageInfo>
 #include <QTimer>
 #include <QDir>
 #include <QCoreApplication>
 #include <QStringList>
+#include <sys/types.h>
+#include <pwd.h>
+#include <signal.h>
 #include <sys/statvfs.h>
 #include <unistd.h>
 #define GB (1024 * 1024 * 1024)
@@ -26,8 +42,6 @@ long uploadLast;
 QChartView *cpuChartView;
 QChartView *ramSwapChartView;
 QChartView *networkChartView;
-
-
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -1004,3 +1018,263 @@ double MainWindow::hardDiskCheck(const QString &disk)
     }
     return -1;
 }
+
+/*
+ * 1.2.1 Process Actions and 1.2.2 Detailed View (Properties)
+ */
+
+void MainWindow::processActions(const QPoint &pos) {
+    QTreeWidgetItem* selectedItem = ui->treeWidget->itemAt(pos);
+    if (!selectedItem) return;
+
+    int pid = selectedItem->text(3).toInt();
+
+    QMenu contextMenu;
+    QAction* stopAction = contextMenu.addAction(tr("Stop Process"));
+    QAction* continueAction = contextMenu.addAction(tr("Continue Process"));
+    QAction* killAction = contextMenu.addAction(tr("Kill Process"));
+    QAction* listMapsAction = contextMenu.addAction(tr("List Memory Maps"));
+    QAction* listFilesAction = contextMenu.addAction(tr("List Open Files"));
+    QAction* propertiesAction = contextMenu.addAction(tr("Properties"));
+
+    connect(stopAction, &QAction::triggered, this, [this, pid]() { stopProcess(pid); });
+    connect(continueAction, &QAction::triggered, this, [this, pid]() { continueProcess(pid); });
+    connect(killAction, &QAction::triggered, this, [this, pid]() { killProcess(pid); });
+    connect(listMapsAction, &QAction::triggered, this, [this, pid]() { listMapsProcess(pid); });
+    connect(listFilesAction, &QAction::triggered, this, [this, pid]() { listFilesProcess(pid); });
+    connect(propertiesAction, &QAction::triggered, this, [this, pid]() { propertiesProcess(pid); });
+
+
+    contextMenu.exec(ui->treeWidget->viewport()->mapToGlobal(pos));
+}
+
+
+void MainWindow::stopProcess(int pid) {
+    if (pid > 0) {
+        int result = kill(pid, SIGSTOP);
+        if (result == 0) {
+            qDebug() << "Process with PID" << pid << "stopped successfully.";
+        }
+    }
+}
+
+void MainWindow::continueProcess(int pid) {
+    if (pid > 0) {
+        int result = kill(pid, SIGCONT);
+        if (result == 0) {
+            qDebug() << "Process with PID" << pid << "continued successfully.";
+        }
+    }
+}
+
+void MainWindow::killProcess(int pid) {
+    if (pid > 0) {
+        int result = kill(pid, SIGKILL);
+        if (result == 0) {
+            qDebug() << "Process with PID" << pid << "killed successfully.";
+        }
+    }
+}
+
+void MainWindow::listMapsProcess(int pid) {
+    QString mapsFilePath = QString("/proc/%1/smaps").arg(pid);
+    QFile mapsFile(mapsFilePath);
+
+    if (!mapsFile.open(QIODevice::ReadOnly | QIODevice::Text)) { //debug statement
+        qDebug() << "Failed to open" << mapsFilePath;
+        return;
+    }
+    QString mapsFileContent = mapsFile.readAll();
+    QStringList lines = mapsFileContent.split('\n');
+
+    showMemoryMapsDialog(lines);
+}
+
+void MainWindow::showMemoryMapsDialog(const QStringList &lines) {
+    QDialog *dialog = new QDialog(this);
+    dialog->setWindowTitle(tr("Memory Maps"));
+
+    QTableWidget *table = new QTableWidget(lines.size(), 6, dialog);
+    table->setHorizontalHeaderLabels({"Filename", "VM Start", "VM End", "VM Size", "Flags", "VM Offset", "Private Clean", "Private Dirty", "Shared Clean," "Shared Dirty"});
+
+    int row = 0;
+    foreach (const QString &line, lines) {
+        if (line.trimmed().isEmpty()) {
+            continue;
+        }
+        QStringList columns = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts);
+        for (int col = 0; col < columns.size(); ++col) {
+            QTableWidgetItem *item = new QTableWidgetItem(columns[col]);
+            table->setItem(row, col, item);
+        }
+        row++;
+    }
+    table->resizeColumnsToContents();
+    QVBoxLayout *layout = new QVBoxLayout;
+    layout->addWidget(table);
+    dialog->setLayout(layout);
+    dialog->exec();
+}
+
+void MainWindow::listFilesProcess(int pid) {
+    //Random
+    QDialog *dialog = new QDialog(this);
+    dialog->setWindowTitle(tr("Open Files"));
+
+    QTableWidget *table = new QTableWidget(0, 2, dialog);
+    table->setHorizontalHeaderLabels({"File Descriptors", "Target Path"});
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+
+    QString fdPath = QString("/proc/%1/fd").arg(pid);
+    QDir fdDir(fdPath);
+
+    if (!fdDir.exists()) {
+        qDebug() << "The /proc directory for PID" << pid << "does not exist";
+        return;
+    }
+
+    QStringList files = fdDir.entryList(QDir::NoDotAndDotDot | QDir::System);
+    for (const QString &file : files) {
+        QString linkPath = fdDir.absoluteFilePath(file);
+        QFileInfo fileInfo(linkPath);
+
+        int currentRow = table->rowCount();
+        table->insertRow(currentRow);
+
+        table->setItem(currentRow, 0, new QTableWidgetItem(file));
+
+        if (fileInfo.isSymLink()) {
+            table->setItem(currentRow, 1, new QTableWidgetItem(fileInfo.symLinkTarget()));
+        } else {
+            table->setItem(currentRow, 1, new QTableWidgetItem(linkPath));
+        }
+    }
+
+    QVBoxLayout *layout = new QVBoxLayout;
+    layout->addWidget(table);
+    dialog->setLayout(layout);
+
+    dialog->exec();
+}
+
+ProcessDetails MainWindow::getProcessDetails(int pid) {
+    ProcessDetails details;
+    //user
+    QFile statusFile(QString("/proc/%1/status").arg(pid));
+    QString uid = "";
+    if (statusFile.open(QIODevice::ReadOnly)) {
+        QTextStream in(&statusFile);
+        QString line;
+        while (!in.atEnd()) {
+            line = in.readLine();
+            if (line.startsWith("Uid:")) {
+                QStringList parts = line.split('\t');
+                if (parts.size() > 1) {
+                    uid = parts[1];
+                    break;
+                }
+            }
+        }
+    }
+    uid_t uidNum = uid.toInt();
+    struct passwd *pw = getpwuid(uidNum);
+    if (pw != nullptr) {
+        details.user = QString::fromLocal8Bit(pw->pw_name);
+    }
+    statusFile.seek(0);
+    statusFile.close();
+    long smemory = 0;
+    //state
+    if (statusFile.open(QIODevice::ReadOnly)) {
+        QTextStream in(&statusFile);
+        QString line = in.readLine();
+        while (line != nullptr) {
+            if (line.startsWith("Name:")) {
+                details.name = line.split("\t").last();
+            } else if (line.startsWith("State:")) {
+                QString stateLine = line.split("\t").last();
+                if (stateLine.startsWith("S")) {
+                    details.state = "Sleeping";
+                } else if (stateLine.startsWith("R")) {
+                    details.state = "Running";
+                } else {
+                    details.state = "";
+                }
+            } else if (line.startsWith("VmRSS:")) {
+                long bytes = line.simplified().split(" ")[1].toLong() * 1024;
+                details.memory = bytesToMebibytesString(bytes);
+                details.rmemory = details.memory;
+            } else if (line.startsWith("VmSize:")) {
+                long bytes = line.simplified().split(" ")[1].toLong()  * 1024;
+                details.vmemory = bytesToMebibytesString(bytes);
+            } else if (line.startsWith("RssFile:")) {
+                long bytes = line.simplified().split(" ")[1].toLong()  * 1024;
+                smemory += bytes;
+            } else if (line.startsWith("RssShmem:")) {
+                long bytes = line.simplified().split(" ")[1].toLong()  * 1024;
+                smemory += bytes;
+            } else if (line.startsWith("VmLib:")) {
+                long bytes = line.simplified().split(" ")[1].toLong()  * 1024;
+                smemory += bytes;
+            }
+            line = in.readLine();
+        }
+    }
+    //cpu time and start time
+    QFile statFile(QString("/proc/%1/stat").arg(pid));
+    if (statFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QString line = statFile.readLine();
+        QStringList parts = line.split(" ");
+        if (parts.count() > 13) {
+            long utime = parts[13].toLong();
+            long stime = parts[14].toLong();
+            long totalTime = (utime + stime) / sysconf(_SC_CLK_TCK);
+            details.cpuTime = QString::number(totalTime);
+        }
+        long startTimeTicks = parts[21].toLong();
+        QFile file("/proc/uptime");
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            qDebug() << "Error Opening Uptime File";
+        }
+
+        QString data = file.readLine();
+        long uptimeSeconds = data.split(" ")[0].toLong();
+        long startTimeSeconds = uptimeSeconds - (startTimeTicks / sysconf(_SC_CLK_TCK));
+        details.startTime = QDateTime::fromSecsSinceEpoch(startTimeSeconds + QDateTime::currentDateTime().toSecsSinceEpoch() - uptimeSeconds);
+    }
+    details.smemory = bytesToMebibytesString(smemory);
+    return details;
+}
+
+
+void MainWindow::propertiesProcess(int pid) {
+    ProcessDetails details = getProcessDetails(pid);
+
+    QDialog *dialog = new QDialog(this);
+    QFormLayout *layout = new QFormLayout(dialog);
+
+    layout->addRow("Process Name:" , new QLabel(details.name));
+    layout->addRow("User:", new QLabel(details.user));
+    layout->addRow("State:", new QLabel(details.state));
+    layout->addRow("Memory:", new QLabel(details.memory));
+    layout->addRow("Virtual Memory:", new QLabel(details.vmemory));
+    layout->addRow("Resident Memory:", new QLabel(details.rmemory));
+    layout->addRow("Shared Memory:", new QLabel(details.smemory));
+    layout->addRow("CPU Time:", new QLabel(details.cpuTime));
+    layout->addRow("Start Time:", new QLabel(details.startTime.toString()));
+
+    dialog->setLayout(layout);
+    dialog->exec();
+}
+
+
+
+
+
+
+
+
+
+
+
+
