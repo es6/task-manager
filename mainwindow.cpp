@@ -568,6 +568,7 @@ void MainWindow::showMemoryMapsDialog(const QStringList &lines) {
         if (line.trimmed().isEmpty()) {
             continue;
         }
+        qDebug() << "foreach: " << line;
         QStringList columns = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts);
         for (int col = 0; col < columns.size(); ++col) {
             QTableWidgetItem *item = new QTableWidgetItem(columns[col]);
