@@ -772,7 +772,7 @@ ProcessInfo MainWindow::readProcessInfo(const QString &statusPath) {
                 } else if (stateLine.startsWith("R")) {
                     info.status = "Running";
                 } else {
-                    info.status = "";
+                    info.status = stateLine;
                 }
             } else if (line.startsWith("VmRSS:")) {
                 info.memory = kbToMiB(line.split("\t").last());
@@ -869,7 +869,7 @@ void MainWindow::updateProcesses(bool showOnlyUserProcess, bool treeView) {
                             } else if (stateLine.startsWith("R")) {
                                 processStatus = "Running";
                             } else {
-                                processStatus = "";
+                                processStatus = stateLine;
                             }
                         } else if (line.startsWith("VmRSS:")) {
                             processMemory = kbToMiB(line.split("\t").last());
@@ -1249,7 +1249,7 @@ ProcessDetails MainWindow::getProcessDetails(int pid) {
                 } else if (stateLine.startsWith("R")) {
                     details.state = "Running";
                 } else {
-                    details.state = "";
+                    details.state = stateLine;
                 }
             } else if (line.startsWith("VmRSS:")) {
                 long bytes = line.simplified().split(" ")[1].toLong() * 1024;
