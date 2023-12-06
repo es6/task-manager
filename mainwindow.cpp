@@ -1099,72 +1099,65 @@ void MainWindow::showMemoryMapsDialog(const QStringList &lines) {
     QDialog *dialog = new QDialog(this);
     dialog->setWindowTitle(tr("Memory Maps"));
 
-    QTableWidget *table = new QTableWidget(lines.size(), 10, dialog);
-    table->setHorizontalHeaderLabels({"Filename", "VM Start", "VM End", "VM Size", "Flags", "VM Offset", "Private Clean", "Private Dirty", "Shared Clean," "Shared Dirty"});
-    //each memory map row ends at vmFlags
+    QTableWidget *table = new QTableWidget(0, 10, dialog); // Start with 0 rows and add as needed
+    table->setHorizontalHeaderLabels({"Filename", "VM Start", "VM End", "VM Size", "Flags", "VM Offset", "Private Clean", "Private Dirty", "Shared Clean", "Shared Dirty"});
+    table->setMinimumSize(800, 600);
+
     int row = 0;
-    int mapCounter = 0;
-    QString fileName, VMStart, VMEnd, VMSize, flags;
-    QString VMOffset, privateClean, privateDirty, sharedClean, sharedDirty;
+    QString fileName, VMStart, VMEnd, VMSize, flags, VMOffset, privateClean, privateDirty, sharedClean, sharedDirty;
 
-
-    //loop until 23 this adds a row to the widget
     foreach (const QString &line, lines) {
         if (line.trimmed().isEmpty()) {
             continue;
         }
 
-        if (row == 0) {
-            QStringList columns = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts);
+        QStringList columns = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts);
+        if (row == 0 && columns.count() >= 6) {
             VMStart = columns[0].split("-")[0];
             VMEnd = columns[0].split("-")[1];
             flags = columns[1];
             VMOffset = columns[2];
-            fileName = columns[5];
+            fileName = columns[5].trimmed();
         }
-        if (line.startsWith("Size:")) {
-            VMSize = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts)[1] + "kB";
+        else if (line.startsWith("Size:")) {
+            VMSize = columns[1] + " kB";
+        }
+        else if (line.startsWith("Shared_Clean:")) {
+            sharedClean = columns[1] + " kB";
+        }
+        else if (line.startsWith("Shared_Dirty:")) {
+            sharedDirty = columns[1] + " kB";
+        }
+        else if (line.startsWith("Private_Clean:")) {
+            privateClean = columns[1] + " kB";
+        }
+        else if (line.startsWith("Private_Dirty:")) {
+            privateDirty = columns[1] + " kB";
         }
 
-        if (line.startsWith("Shared_Clean:")) {
-            sharedClean = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts)[1] + "kB";
-        }
-        if (line.startsWith("Shared_Dirty:")) {
-            sharedDirty = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts)[1] + "kB";
-        }
-        if (line.startsWith("Private_Clean:")) {
-            privateClean = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts)[1] + "kB";
-        }
-        if (line.startsWith("Private_Dirty:")) {
-            privateDirty = line.split(QRegExp("\\s+"), Qt::SkipEmptyParts)[1] + "kB";
-        }
+        if (row == 23) {
+            // Add a row only if fileName is not empty
+            if (!fileName.isEmpty()) {
+                table->insertRow(table->rowCount()); // Insert a new row
+                table->setItem(table->rowCount() - 1, 0, new QTableWidgetItem(fileName));
+                table->setItem(table->rowCount() - 1, 1, new QTableWidgetItem(VMStart));
+                table->setItem(table->rowCount() - 1, 2, new QTableWidgetItem(VMEnd));
+                table->setItem(table->rowCount() - 1, 3, new QTableWidgetItem(VMSize));
+                table->setItem(table->rowCount() - 1, 4, new QTableWidgetItem(flags));
+                table->setItem(table->rowCount() - 1, 5, new QTableWidgetItem(VMOffset));
+                table->setItem(table->rowCount() - 1, 6, new QTableWidgetItem(privateClean));
+                table->setItem(table->rowCount() - 1, 7, new QTableWidgetItem(privateDirty));
+                table->setItem(table->rowCount() - 1, 8, new QTableWidgetItem(sharedClean));
+                table->setItem(table->rowCount() - 1, 9, new QTableWidgetItem(sharedDirty));
+            }
 
-
-
-        if (row == 23) { //where last vm flags var is -> reset all the QString vars
-            //after setting widgetItem
+            // Reset all the QString variables for the next map entry
+            fileName = VMStart = VMEnd = VMSize = flags = VMOffset = privateClean = privateDirty = sharedClean = sharedDirty = "";
             row = -1;
-            //QTableWidgetItem *item = new QTableWidgetItem(columns[1]);
-            qDebug() << fileName << VMStart << VMEnd << VMSize << flags << VMOffset << privateClean << privateDirty << sharedClean << sharedDirty;
-
-            mapCounter++;
-
-
-
-
-            fileName = "";
-            VMStart = "";
-            VMEnd = "";
-            VMSize = "";
-            flags = "";
-            VMOffset = "";
-            privateClean = "";
-            privateDirty = "";
-            sharedClean = "";
-            sharedDirty = "";
         }
         row++;
     }
+
     table->resizeColumnsToContents();
     QVBoxLayout *layout = new QVBoxLayout;
     layout->addWidget(table);
@@ -1172,12 +1165,14 @@ void MainWindow::showMemoryMapsDialog(const QStringList &lines) {
     dialog->exec();
 }
 
+
 void MainWindow::listFilesProcess(int pid) {
     //Random
     QDialog *dialog = new QDialog(this);
     dialog->setWindowTitle(tr("Open Files"));
 
     QTableWidget *table = new QTableWidget(0, 2, dialog);
+    table->setMinimumSize(800, 600);
     table->setHorizontalHeaderLabels({"File Descriptors", "Target Path"});
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
