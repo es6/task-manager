@@ -133,7 +133,7 @@ void MainWindow::createNetworkBarChart() {
     // Set legend alignment to horizontally spaced out
     lineChart->legend()->setAlignment(Qt::AlignBottom);
     lineChart->legend()->setContentsMargins(0, 0, 0, 0);
-    lineChart->legend()->setFont(QFont("Arial", 6));
+    lineChart->legend()->setFont(QFont("Arial", 8));
 
     for (int i = 0; (i < (int)networkLineSeriesVector.size()) ; i++) {
         lineChart->addSeries(networkLineSeriesVector[i]);
@@ -168,7 +168,7 @@ void MainWindow::updateNetworkBarChart() {
     // Set legend alignment to horizontally spaced out
     lineChart->legend()->setAlignment(Qt::AlignBottom);
     lineChart->legend()->setContentsMargins(0, 0, 0, 0);
-    lineChart->legend()->setFont(QFont("Arial", 6));
+    lineChart->legend()->setFont(QFont("Arial", 8));
 
     for (int i = 0; (i < (int)networkLineSeriesVector.size()) ; i++) {
         lineChart->addSeries(networkLineSeriesVector[i]);
@@ -291,7 +291,7 @@ void MainWindow::updateRamSwapBarChart() {
     // Set legend alignment to horizontally spaced out
     lineChart->legend()->setAlignment(Qt::AlignBottom);
     lineChart->legend()->setContentsMargins(0, 0, 0, 0);
-    lineChart->legend()->setFont(QFont("Arial", 6));
+    lineChart->legend()->setFont(QFont("Arial", 8));
 
     for (int i = 0; (i < (int)ramSwapLineSeriesVector.size()) ; i++) {
         lineChart->addSeries(ramSwapLineSeriesVector[i]);
@@ -324,8 +324,7 @@ void MainWindow::createRamSwapBarChart() {
     // Set legend alignment to horizontally spaced out
     lineChart->legend()->setAlignment(Qt::AlignBottom);
     lineChart->legend()->setContentsMargins(0, 0, 0, 0);
-    lineChart->legend()->setFont(QFont("Arial", 6));
-
+    lineChart->legend()->setFont(QFont("Arial", 8));
     for (int i = 0; (i < (int)ramSwapLineSeriesVector.size()) ; i++) {
         lineChart->addSeries(ramSwapLineSeriesVector[i]);
         ramSwapLineSeriesVector[i]->attachAxis(axisY);
@@ -472,7 +471,7 @@ void MainWindow::createCpuBarChart() {
     // Set legend alignment to horizontally spaced out
     lineChart->legend()->setAlignment(Qt::AlignBottom);
     lineChart->legend()->setContentsMargins(0, 0, 0, 0);
-    lineChart->legend()->setFont(QFont("Arial", 4));
+    lineChart->legend()->setFont(QFont("Arial", 2));
 
     for (int i = 0; (i < (int)cpuLineSeriesVector.size()) ; i++) {
         lineChart->addSeries(cpuLineSeriesVector[i]);
@@ -509,7 +508,7 @@ void MainWindow::updateCpuBarChart() {
     // Set legend alignment to horizontally spaced out
     lineChart->legend()->setAlignment(Qt::AlignBottom);
     lineChart->legend()->setContentsMargins(0, 0, 0, 0);
-    lineChart->legend()->setFont(QFont("Arial", 4));
+    lineChart->legend()->setFont(QFont("Arial", 2));
 
     for (int i = 0; (i < (int)cpuLineSeriesVector.size()) ; i++) {
         lineChart->addSeries(cpuLineSeriesVector[i]);
